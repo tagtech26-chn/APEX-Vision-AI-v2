@@ -1,0 +1,52 @@
+[
+    {
+        "id": 1,
+        "name": "White Marble",
+        "category": "Marble",
+        "finish": "Polished",
+        "size": "600x600",
+        "series": "Eternity",
+        "manufacturer": "Kajaria",
+        "image": "tile1.jpg"
+    },
+    {
+        "id": 2,
+        "name": "Grey Stone",
+        "category": "Stone",
+        "finish": "Matt",
+        "size": "600x600",
+        "series": "Stone",
+        "manufacturer": "Kajaria",
+        "image": "tile2.jpg"
+    },
+    {
+        "id": 3,
+        "name": "Wood Oak",
+        "category": "Wood",
+        "finish": "Matt",
+        "size": "1200x200",
+        "series": "Nature",
+        "manufacturer": "Kajaria",
+        "image": "tile3.jpg"
+    },
+    {
+        "id": 4,
+        "name": "Dark Slate",
+        "category": "Slate",
+        "finish": "Rustic",
+        "size": "600x600",
+        "series": "Urban",
+        "manufacturer": "Kajaria",
+        "image": "tile4.jpg"
+    },
+    {
+        "id": 5,
+        "name": "Travertine Beige",
+        "category": "Stone",
+        "finish": "Matt",
+        "size": "600x600",
+        "series": "Classic",
+        "manufacturer": "Kajaria",
+        "image": "tile5.jpg"
+    }
+]

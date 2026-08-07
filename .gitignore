@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+*.pth
+*.npy
+*.scene
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Runtime data
+uploads/
+input/
+output/*
+!output/.gitkeep
+logs/
+runs/
+weights/
+models/
+*.pt
+
+# Env
+.env
+.env.local
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
