@@ -1,18 +1,23 @@
+# Floors match the exact versions the app was developed and tested against, so
+# a routine `pip install -r requirements.txt` never downgrades a dependency.
+# Each cap is the next major version, so future breaking releases are only
+# pulled in by a deliberate, re-tested bump.
+
 # Core
-fastapi>=0.115
-uvicorn>=0.30
-python-multipart>=0.0.9
-pydantic>=2.7
+fastapi>=0.141.1,<1.0
+uvicorn>=0.52.1,<1.0
+python-multipart>=0.0.32,<0.1
+pydantic>=2.13.4,<3.0
 
 # Image processing
-opencv-python>=4.9
-numpy>=1.26
-pillow>=10.0
+opencv-python>=5.0.0.93,<6.0
+numpy>=2.4.6,<3.0
+pillow>=12.3.0,<13.0
 
 # AI / ML (core)
-torch>=2.0
-torchvision>=0.15
-transformers>=4.40
+torch>=2.13.0,<3.0
+torchvision>=0.28.0,<1.0
+transformers>=4.39.3,<5.0
 
 # Optional heavy AI stack. The app runs without these using
 # lightweight heuristic providers (set APEX_AI_PROVIDER=light or auto).
@@ -20,9 +25,9 @@ transformers>=4.40
 #   GroundingDINO   -> D:\Projects\GroundingDINO
 #   SAM2            -> D:\Projects\sam2
 #   Depth-Anything-V2 -> D:\Projects\Depth-Anything-V2
-segment-anything>=1.0
-supervision>=0.19
-ultralytics>=8.1
-hydra-core>=1.3
+segment-anything>=1.0,<2.0
+supervision>=0.29.1,<1.0
+ultralytics>=8.4.115,<9.0
+hydra-core>=1.3.4,<2.0
 
-matplotlib>=3.8
+matplotlib>=3.11.1,<4.0

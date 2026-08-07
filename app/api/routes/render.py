@@ -8,6 +8,7 @@ show an outdated result: only the latest submitted job for a room may report
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -29,9 +30,31 @@ _jobs: dict[str, dict] = {}
 # room stem -> job_id of the most recently submitted render for that room.
 _room_current: dict[str, str] = {}
 
+# Finished jobs are kept around briefly so a slow client can still poll the
+# result, then pruned. Without this, _jobs/_room_current grow for the entire
+# life of the process.
+_JOB_TTL_SECONDS = 30 * 60
+_TERMINAL_STATUSES = {"done", "error", "superseded"}
+
+
+def _prune_old_jobs() -> None:
+    cutoff = time.time() - _JOB_TTL_SECONDS
+    expired = [
+        job_id
+        for job_id, job in _jobs.items()
+        if job.get("status") in _TERMINAL_STATUSES and job.get("created_at", 0) < cutoff
+    ]
+    for job_id in expired:
+        _jobs.pop(job_id, None)
+    stale_rooms = [
+        room_key for room_key, job_id in _room_current.items() if job_id not in _jobs
+    ]
+    for room_key in stale_rooms:
+        _room_current.pop(room_key, None)
+
 
 def _job(job_id: str, **fields) -> dict:
-    return _jobs.setdefault(job_id, {"job_id": job_id, **fields})
+    return _jobs.setdefault(job_id, {"job_id": job_id, "created_at": time.time(), **fields})
 
 
 def _is_current(job_id: str, room_key: str) -> bool:
@@ -86,6 +109,8 @@ def _run_render_job(
 
 @router.post("")
 async def render(request: RenderRequest):
+    _prune_old_jobs()
+
     try:
         room = services.rooms.get_room(request.room)
     except ValueError as exc:

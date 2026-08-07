@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import time
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -22,11 +24,15 @@ def client(tmp_path_factory):
 
 
 def test_home(client):
+    # When the built frontend exists, "/" serves the SPA; otherwise the legacy JSON home.
     response = client.get("/")
     assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "Running"
-    assert data["version"] == "2.0.0"
+    if "text/html" in response.headers.get("content-type", ""):
+        assert response.text.lstrip().lower().startswith("<!doctype html>")
+    else:
+        data = response.json()
+        assert data["status"] == "Running"
+        assert data["version"] == "2.0.0"
 
 
 def test_health(client):
@@ -66,3 +72,64 @@ def test_render_endpoint_invalid_pattern(client):
         json={"room": 1, "tile": 1, "pattern": "Wonky"},
     )
     assert response.status_code == 422
+
+
+class _StubAnalyzer:
+    """Minimal analyzer stub so the happy-path test doesn't need real AI models."""
+
+    providers = {"detector": "stub", "segmenter": "stub", "depth": "stub"}
+
+    def analyze(self, room_path, progress_cb=None):
+        from app.ai.scene.result import SceneResult
+
+        image = np.zeros((200, 300, 3), dtype=np.uint8)
+        mask = np.zeros((200, 300), dtype=np.uint8)
+        mask[100:, 40:260] = 255
+        return SceneResult(
+            image=image,
+            width=300,
+            height=200,
+            floor_mask=mask,
+            floor_polygon=np.array(
+                [[60, 100], [240, 100], [280, 199], [20, 199]], dtype=np.float32
+            ),
+            homography=np.eye(3, dtype=np.float32),
+        )
+
+
+def test_render_job_happy_path(
+    client, monkeypatch, room_image_path, tile_image_path, tmp_path
+):
+    """A submitted render job should poll through to status 'done'."""
+    from app.api.deps import services as api_services
+    from app.cache.scene_cache import SceneCache
+    from app.services.render_service import RenderService
+
+    # Swap in a stub analyzer + isolated cache so this test is fast,
+    # deterministic, and doesn't depend on real committed room/tile assets.
+    monkeypatch.setattr(
+        api_services,
+        "_render",
+        RenderService(analyzer=_StubAnalyzer(), cache=SceneCache(root=tmp_path / "scenes")),
+    )
+    monkeypatch.setattr(api_services.rooms, "get_room", lambda room_id: room_image_path)
+    monkeypatch.setattr(
+        api_services.tiles,
+        "get_tile",
+        lambda tile_id: {"image_path": str(tile_image_path)},
+    )
+
+    response = client.post("/api/render", json={"room": 1, "tile": 1})
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+    assert response.json()["status"] == "queued"
+
+    deadline = time.time() + 5
+    job = client.get(f"/api/render/{job_id}").json()
+    while job["status"] in ("queued", "processing") and time.time() < deadline:
+        time.sleep(0.05)
+        job = client.get(f"/api/render/{job_id}").json()
+
+    assert job["status"] == "done", job
+    assert job["image"].startswith("/output/")
+    assert job["filename"]
