@@ -8,6 +8,8 @@ import {
 
 import type { Room } from "../../services/api";
 
+import { API } from "../../config";
+
 interface Props{
 
     room:Room;
@@ -17,8 +19,6 @@ interface Props{
     onClick:()=>void;
 
 }
-
-const API="http://127.0.0.1:8000";
 
 export default function RoomCard({
 

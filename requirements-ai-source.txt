@@ -1,0 +1,6 @@
+# APEX Vision AI - heavy AI provider source installs (step 2).
+# Run AFTER `pip install -r requirements-prod.txt` (torch must be present before
+# these build). Requires git and a C/C++ toolchain. The revisions match the
+# exact versions the app was tested with.
+-e git+https://github.com/IDEA-Research/GroundingDINO.git@856dde20aee659246248e20734ef9ba5214f5e44#egg=groundingdino
+-e git+https://github.com/facebookresearch/sam2.git@2b90b9f5ceec907a1c18123530e92e794ad901a4#egg=SAM_2
