@@ -139,6 +139,48 @@ Notes:
 - Rendered images under `/output/*` are served with `Cache-Control: no-store`
   so refreshes always show the latest render.
 
+## Production setup on a fresh Windows machine
+
+`scripts/setup-windows.ps1` installs everything on an empty Windows box
+(Python 3.11, Node 20.19+/22.12+ and git must already be installed):
+
+```powershell
+git clone https://github.com/tagtech26-chn/APEX-Vision-AI-v2.git
+cd APEX-Vision-AI-v2
+
+# Heuristic stack only - works anywhere, runs on CPU, no extra downloads:
+.\scripts\setup-windows.ps1 -CpuOnly
+
+# Or the full heavy AI stack (~2.9 GB of model weights; also needs the Visual
+# Studio C++ Build Tools to compile GroundingDINO):
+.\scripts\setup-windows.ps1 -Heavy -CpuOnly
+```
+
+What it does: creates `.venv`, installs `requirements-prod.txt` (and
+`requirements-ai-source.txt` + model weights with `-Heavy`), runs
+`npm ci && npm run build` in `frontend/`, and writes `models.env` (heavy model
+paths, loaded by `start.ps1` — never committed).
+
+Start and test:
+
+```powershell
+.\start.ps1
+# open http://127.0.0.1:8000
+```
+
+Notes:
+
+- The AI provider defaults to `auto`: the heavy stack is used when the models
+  load, otherwise the OpenCV heuristic pipeline. Force one with
+  `$env:APEX_AI_PROVIDER = "heavy"` (or `"light"`) before `start.ps1`.
+- `-CpuOnly` installs the CPU torch build (~200 MB vs ~2.5 GB); the app runs on
+  CPU regardless, so it is the recommended default on machines without a GPU.
+- `-SkipFrontend` skips the npm build; `-SkipModels` skips the weight download
+  when `-Heavy` is given (run `.\scripts\download-heavy-models.ps1` later).
+- Sanity-check the install with the test suite:
+  `.venv\Scripts\pip install -r requirements-dev.txt` then
+  `.venv\Scripts\python -m pytest`.
+
 ## Other settings
 
 | Variable                     | Default            | Purpose                              |

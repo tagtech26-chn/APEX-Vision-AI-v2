@@ -28,6 +28,7 @@ models/
 # Env
 .env
 .env.local
+models.env
 
 # Frontend
 frontend/node_modules/
