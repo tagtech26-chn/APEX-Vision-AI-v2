@@ -1,7 +1,5 @@
-# Floors match the exact versions the app was developed and tested against, so
-# a routine `pip install -r requirements.txt` never downgrades a dependency.
-# Each cap is the next major version, so future breaking releases are only
-# pulled in by a deliberate, re-tested bump.
+# Runtime dependencies. Version ranges are intentionally capped before the next
+# breaking major release; upgrades should be validated through CI first.
 
 # Core
 fastapi>=0.141.1,<1.0
@@ -14,17 +12,11 @@ opencv-python>=5.0.0.93,<6.0
 numpy>=2.4.6,<3.0
 pillow>=12.3.0,<13.0
 
-# AI / ML (core)
+# AI / ML
+# Heavy model assets are configured at runtime through environment variables.
 torch>=2.13.0,<3.0
 torchvision>=0.28.0,<1.0
 transformers>=4.39.3,<5.0
-
-# Optional heavy AI stack. The app runs without these using
-# lightweight heuristic providers (set APEX_AI_PROVIDER=light or auto).
-# Install from their source repositories:
-#   GroundingDINO   -> D:\Projects\GroundingDINO
-#   SAM2            -> D:\Projects\sam2
-#   Depth-Anything-V2 -> D:\Projects\Depth-Anything-V2
 segment-anything>=1.0,<2.0
 supervision>=0.29.1,<1.0
 ultralytics>=8.4.115,<9.0
