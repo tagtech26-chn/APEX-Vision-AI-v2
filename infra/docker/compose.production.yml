@@ -8,6 +8,8 @@ services:
     init: true
     ports:
       - "8000:8000"
+    env_file:
+      - compose.production.env
     environment:
       APEX_AI_PROVIDER: ${APEX_AI_PROVIDER:-light}
       APEX_DEBUG: ${APEX_DEBUG:-false}
