@@ -32,7 +32,7 @@ def test_home(client):
     else:
         data = response.json()
         assert data["status"] == "Running"
-        assert data["version"] == "2.0.0"
+        assert data["version"] == "2.1.0"
 
 
 def test_health(client):
