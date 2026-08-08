@@ -14,12 +14,7 @@ from app.core.config import settings
 
 
 class SceneCache:
-    """Persist analysed scenes with optional HMAC integrity protection.
-
-    Persistent cache loading is disabled when no signing key is configured.
-    This prevents an attacker who can modify cache files from getting an
-    arbitrary pickle deserialized by the application.
-    """
+    """Persist analysed scenes with HMAC integrity protection when configured."""
 
     def __init__(self, root: str | Path | None = None, signing_key: str | None = None) -> None:
         self.root = Path(root) if root else settings.scenes_dir
@@ -31,10 +26,10 @@ class SceneCache:
         return bool(self._signing_key)
 
     def _path(self, room_name: str) -> Path:
-        safe = room_name.replace("\\", "_").replace("/", "_").strip()
-        if not safe or safe in {".", ".."}:
-            raise ValueError("Room name cannot be empty or relative.")
-        return self.root / f"{safe}.scene"
+        name = room_name.strip()
+        if not name or name in {".", ".."} or "/" in name or "\\" in name:
+            raise ValueError("Room name must be a single safe path component.")
+        return self.root / f"{name}.scene"
 
     def _signature(self, payload: bytes) -> bytes:
         return hmac.new(self._signing_key, payload, hashlib.sha256).digest()
@@ -48,7 +43,6 @@ class SceneCache:
         path = self._path(room_name)
         payload = pickle.dumps(scene, protocol=pickle.HIGHEST_PROTOCOL)
         envelope = self._signature(payload) + payload
-        path.parent.mkdir(parents=True, exist_ok=True)
         fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
         try:
             with os.fdopen(fd, "wb") as fp:
