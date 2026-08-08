@@ -1,0 +1,35 @@
+services:
+  apex-vision-api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+    image: apex-vision-ai:v2.1
+    restart: unless-stopped
+    init: true
+    ports:
+      - "8000:8000"
+    environment:
+      APEX_AI_PROVIDER: ${APEX_AI_PROVIDER:-light}
+      APEX_DEBUG: ${APEX_DEBUG:-false}
+      APEX_CORS_ORIGINS: ${APEX_CORS_ORIGINS:-}
+      APEX_RENDER_MAX_DIM: ${APEX_RENDER_MAX_DIM:-2048}
+    volumes:
+      - apex-output:/app/output
+      - apex-uploads:/app/uploads
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  apex-output:
+  apex-uploads:
