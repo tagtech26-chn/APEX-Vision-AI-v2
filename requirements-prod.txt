@@ -20,7 +20,9 @@ pydantic==2.13.4
 httpx==0.28.1
 
 # --- Image processing ---
-opencv-python==5.0.0.93
+# Headless OpenCV is required for the server/container runtime; it avoids GUI/X11
+# shared-library dependencies such as libxcb that are not needed by the API.
+opencv-python-headless==5.0.0.93
 numpy==2.4.6
 pillow==12.3.0
 scipy==1.17.1
