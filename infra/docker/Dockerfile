@@ -9,10 +9,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# OpenCV's native loader may require these small runtime libraries even in
-# the headless package. Keep the runtime dependency explicit and minimal.
+# OpenCV headless still requires a small set of native runtime libraries.
+# Keep the production image free of the full desktop/X11 stack.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libxcb1 libgl1 \
+    && apt-get install -y --no-install-recommends libxcb1 libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements-prod.txt requirements-prod.txt
