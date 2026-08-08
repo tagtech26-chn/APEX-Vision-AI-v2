@@ -1,4 +1,4 @@
-"""Dependency-free runtime metrics for APEX Vision AI diagnostics."""
+"""Dependency-free runtime metrics for APEX Vision AI diagnostics and performance."""
 
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ class RenderMetrics:
     cache_hits: int = 0
     cache_misses: int = 0
     cache_errors: int = 0
+    stage_totals: dict[str, float] = field(default_factory=dict)
+    stage_counts: dict[str, int] = field(default_factory=dict)
 
     def started(self) -> None:
         with self._lock:
@@ -50,9 +52,19 @@ class RenderMetrics:
         with self._lock:
             self.cache_errors += 1
 
-    def snapshot(self) -> dict[str, float | int]:
+    def stage(self, name: str, duration_seconds: float) -> None:
+        with self._lock:
+            self.stage_totals[name] = self.stage_totals.get(name, 0.0) + max(0.0, duration_seconds)
+            self.stage_counts[name] = self.stage_counts.get(name, 0) + 1
+
+    def snapshot(self) -> dict[str, object]:
         with self._lock:
             completed = self.jobs_completed + self.jobs_failed
+            stage_averages = {
+                name: round(total / self.stage_counts[name], 4)
+                for name, total in self.stage_totals.items()
+                if self.stage_counts.get(name, 0)
+            }
             return {
                 "jobs_started": self.jobs_started,
                 "jobs_completed": self.jobs_completed,
@@ -63,6 +75,7 @@ class RenderMetrics:
                 "cache_hits": self.cache_hits,
                 "cache_misses": self.cache_misses,
                 "cache_errors": self.cache_errors,
+                "stage_average_seconds": stage_averages,
             }
 
 
