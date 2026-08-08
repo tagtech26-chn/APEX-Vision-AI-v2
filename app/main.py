@@ -8,21 +8,20 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes.catalog import router as catalog_router
 from app.api.routes.render import router as render_router
 from app.api.routes.rooms import router as rooms_router
 from app.core.config import settings
+from app.core.logging_config import configure_logging
 
-logging.basicConfig(level=logging.DEBUG if settings.debug else logging.INFO)
+configure_logging()
 logger = logging.getLogger("apex")
 
-# Path to the built React app. When present, the API and the SPA are served
-# from the same process on a single port (production mode). Point APEX_FRONTEND_DIST
-# elsewhere to serve a build from a different location.
 FRONTEND_DIST = Path(
     os.getenv("APEX_FRONTEND_DIST", "")
     or (settings.project_root / "frontend" / "dist")
@@ -30,7 +29,6 @@ FRONTEND_DIST = Path(
 
 
 def _cors_origins() -> list[str]:
-    """Development origins plus any APEX_CORS_ORIGINS override (comma-separated)."""
     origins = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -43,27 +41,27 @@ def _cors_origins() -> list[str]:
 
 
 def _warm_models() -> None:
-    """Load the heavy AI models in the background so the first render is fast."""
+    """Load heavy AI models in the background when configured."""
     if settings.ai_provider not in {"heavy", "auto"}:
         return
     try:
         from app.api.deps import services
 
         services.render.get_analyzer()
-        logger.info("AI models warmed up.")
-    except Exception as exc:  # pragma: no cover - depends on the machine
-        logger.warning("AI model warm-up failed: %s", exc)
+        logger.info("AI models warmed up")
+    except Exception:
+        logger.exception("AI model warm-up failed")
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    threading.Thread(target=_warm_models, daemon=True).start()
+    threading.Thread(target=_warm_models, daemon=True, name="apex-model-warmup").start()
     yield
 
 
 app = FastAPI(
     title="APEX Vision AI",
-    version="2.0.0",
+    version="2.1.0",
     description="AI floor detection, room segmentation and tile rendering.",
     lifespan=lifespan,
 )
@@ -76,6 +74,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def exception_and_cache_middleware(request: Request, call_next):
+    """Return safe API errors and prevent rendered assets from stale caching."""
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception("Unhandled request failure: %s %s", request.method, request.url.path)
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": "Internal server error"},
+        )
+
+    if request.url.path.startswith("/output/"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
 app.include_router(rooms_router)
 app.include_router(catalog_router)
 app.include_router(render_router)
@@ -86,34 +103,26 @@ app.mount("/output", StaticFiles(directory=str(settings.output_dir)), name="outp
 
 @app.get("/api/health")
 def health():
-    return {"success": True, "status": "ok"}
+    return {"success": True, "status": "ok", "version": "2.1.0"}
 
 
-@app.middleware("http")
-async def no_cache_renders(request, call_next):
-    """Keep freshly rendered room images from being served from browser caches."""
-    response = await call_next(request)
-    if request.url.path.startswith("/output/"):
-        response.headers["Cache-Control"] = "no-store"
-    return response
+@app.get("/api/ready")
+def readiness():
+    """Lightweight readiness probe for load balancers and orchestrators."""
+    return {"success": True, "status": "ready", "version": "2.1.0"}
 
 
 if FRONTEND_DIST.is_dir():
-    # Production mode: serve the built React app as the SPA. Registered last so
-    # /api/*, /assets and /output keep their dedicated handlers.
     logger.info("Serving frontend from %s", FRONTEND_DIST)
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
 else:
-    logger.warning(
-        "frontend/dist not found — running API only. "
-        "Run `npm run build` inside frontend/ to enable the web UI."
-    )
+    logger.warning("frontend/dist not found — running API only")
 
     @app.get("/")
     def home():
         return {
             "application": "APEX Vision AI",
             "status": "Running",
-            "version": "2.0.0",
+            "version": "2.1.0",
             "ai_provider": settings.ai_provider,
         }
