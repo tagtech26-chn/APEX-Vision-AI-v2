@@ -1,4 +1,4 @@
-name: Production Container
+name: production-container
 
 on:
   push:
@@ -11,29 +11,24 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: production-container-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   container:
-    name: Build production image
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Build production image
+        run: docker build -f infra/docker/Dockerfile -t apex-vision-ai:${{ github.sha }} .
 
-      - name: Build image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: infra/docker/Dockerfile
-          push: false
-          tags: apex-vision-ai:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Smoke test image
+        run: |
+          docker run -d --name apex-smoke -p 8000:8000 apex-vision-ai:${{ github.sha }}
+          trap 'docker logs apex-smoke; docker rm -f apex-smoke' EXIT
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8000/api/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
