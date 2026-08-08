@@ -1,3 +1,11 @@
+FROM node:22-alpine AS frontend-build
+
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend ./
+RUN npm run build
+
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -9,7 +17,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY requirements-prod.txt requirements-prod.txt
+COPY requirements-prod.txt ./requirements-prod.txt
 RUN python -m pip install --upgrade pip \
     && pip install -r requirements-prod.txt
 
@@ -17,6 +25,7 @@ COPY app ./app
 COPY catalog ./catalog
 COPY assets ./assets
 COPY run.py ./run.py
+COPY --from=frontend-build /frontend/dist ./frontend/dist
 
 RUN mkdir -p /app/output /app/uploads \
     && useradd --create-home --uid 10001 apex \
