@@ -1,4 +1,4 @@
-name: production-container
+name: APEX Vision AI v2.1 Validation
 
 on:
   push:
@@ -7,12 +7,18 @@ on:
   pull_request:
     branches:
       - feature/v2.1-production-hardening
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: apex-v21-validation-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-tests:
+    name: Backend tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -22,15 +28,17 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install test dependencies
-        run: pip install -r requirements-dev.txt
-      - name: Run backend tests
+          cache-dependency-path: requirements-dev.txt
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements-dev.txt
+      - name: Run tests
         env:
           APEX_AI_PROVIDER: light
           APEX_DEBUG: "true"
-        run: pytest -q
+        run: pytest -q --maxfail=1
 
   frontend-validation:
+    name: Frontend lint and build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -44,14 +52,15 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: npm ci
-      - name: Lint frontend
+      - name: Lint
         run: npm run lint
-      - name: Build frontend
+      - name: Build
         run: npm run build
 
   container:
+    name: Production container smoke test
     needs: [backend-tests, frontend-validation]
     runs-on: ubuntu-latest
     steps:
@@ -59,20 +68,27 @@ jobs:
         uses: actions/checkout@v4
       - name: Build production image
         run: docker build -f infra/docker/Dockerfile -t apex-vision-ai:${{ github.sha }} .
-      - name: Smoke test image
+      - name: Start container
         run: |
           docker run -d --name apex-smoke -p 8000:8000 \
             -e APEX_AI_PROVIDER=light \
             -e APEX_DEBUG=false \
             -e APEX_CORS_ORIGINS=http://127.0.0.1:8000 \
             apex-vision-ai:${{ github.sha }}
+      - name: Smoke test health and readiness
+        run: |
+          set -e
           trap 'docker logs apex-smoke; docker rm -f apex-smoke' EXIT
-          for i in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:8000/api/health; then
-              curl --fail --silent http://127.0.0.1:8000/api/ready
-              curl --fail --silent http://127.0.0.1:8000/api/diagnostics
-              exit 0
+          for i in {1..45}; do
+            if curl --fail --silent http://127.0.0.1:8000/api/health >/dev/null; then
+              break
             fi
             sleep 2
           done
-          exit 1
+          curl --fail --silent http://127.0.0.1:8000/api/health
+          curl --fail --silent http://127.0.0.1:8000/api/ready
+          curl --fail --silent http://127.0.0.1:8000/api/diagnostics
+          docker inspect --format '{{.State.Status}}' apex-smoke | grep -qx running
+      - name: Cleanup
+        if: always()
+        run: docker rm -f apex-smoke || true
