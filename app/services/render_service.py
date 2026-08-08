@@ -21,7 +21,6 @@ logger = logging.getLogger("apex.render")
 _ANALYZER_LOCK = threading.Lock()
 _TILE_CACHE_LOCK = threading.Lock()
 _TILE_CACHE: OrderedDict[str, object] = OrderedDict()
-_TILE_CACHE_MAX = 32
 
 
 class RenderService:
@@ -56,21 +55,18 @@ class RenderService:
         tile = cv2.imread(str(tile_path))
         if tile is None:
             raise ValueError(f"Unable to load tile: {tile_path}")
+        max_dim = settings.tile_texture_max_dim
+        height, width = tile.shape[:2]
+        if max(height, width) > max_dim:
+            scale = max_dim / float(max(height, width))
+            tile = cv2.resize(tile, (max(1, int(width * scale)), max(1, int(height * scale))), interpolation=cv2.INTER_AREA)
         with _TILE_CACHE_LOCK:
-            _TILE_CACHE[key] = tile
-            _TILE_CACHE.move_to_end(key)
-            while len(_TILE_CACHE) > _TILE_CACHE_MAX:
-                _TILE_CACHE.popitem(last=False)
+            if settings.tile_cache_max_items > 0:
+                _TILE_CACHE[key] = tile
+                _TILE_CACHE.move_to_end(key)
+                while len(_TILE_CACHE) > settings.tile_cache_max_items:
+                    _TILE_CACHE.popitem(last=False)
         return tile
-
-    @staticmethod
-    def _resize_for_render(image, max_dim: int):
-        height, width = image.shape[:2]
-        longest = max(height, width)
-        if longest <= max_dim:
-            return image
-        scale = max_dim / float(longest)
-        return cv2.resize(image, (max(1, int(width * scale)), max(1, int(height * scale))), interpolation=cv2.INTER_AREA)
 
     def render(self, room_path: str | Path, tile_path: str | Path, tile_size_mm: int = 600,
                grout_width: int = 2, grout_color=(220, 220, 220), pattern: str = "Straight",
