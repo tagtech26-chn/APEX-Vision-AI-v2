@@ -1,0 +1,39 @@
+name: Production Container
+
+on:
+  push:
+    branches:
+      - feature/v2.1-production-hardening
+  pull_request:
+    branches:
+      - feature/v2.1-production-hardening
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-container-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  container:
+    name: Build production image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile
+          push: false
+          tags: apex-vision-ai:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
