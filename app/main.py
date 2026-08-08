@@ -22,19 +22,20 @@ from app.core.logging_config import configure_logging
 
 configure_logging()
 logger = logging.getLogger("apex")
-
 FRONTEND_DIST = Path(os.getenv("APEX_FRONTEND_DIST", "") or (settings.project_root / "frontend" / "dist"))
 
 
 def _cors_origins() -> list[str]:
-    origins = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:4173", "http://127.0.0.1:4173"]
+    """Allow local development origins only in debug mode."""
+    origins: list[str] = []
+    if settings.debug:
+        origins.extend(["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:4173", "http://127.0.0.1:4173"])
     extra = os.getenv("APEX_CORS_ORIGINS", "")
     origins.extend(o.strip() for o in extra.split(",") if o.strip())
     return origins
 
 
 def _warm_models() -> None:
-    """Load heavy AI models in the background when configured."""
     if settings.ai_provider not in {"heavy", "auto"}:
         return
     try:
@@ -57,7 +58,6 @@ app.add_middleware(CORSMiddleware, allow_origins=_cors_origins(), allow_credenti
 
 @app.middleware("http")
 async def exception_and_cache_middleware(request: Request, call_next):
-    """Return safe API errors and prevent rendered assets from stale caching."""
     try:
         response = await call_next(request)
     except Exception:
@@ -84,7 +84,6 @@ def health():
 
 @app.get("/api/ready")
 def readiness():
-    """Lightweight readiness probe for load balancers and orchestrators."""
     return {"success": True, "status": "ready", "version": "2.1.0"}
 
 
