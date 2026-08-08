@@ -54,8 +54,6 @@ class Settings:
 
     ai_provider: str = field(default_factory=lambda: _env("APEX_AI_PROVIDER", "auto").lower())
 
-    # Model locations are intentionally configuration-only. There are no
-    # developer-machine paths in the application defaults.
     grounding_dino_config: str = field(default_factory=lambda: _env("GROUNDING_DINO_CONFIG"))
     grounding_dino_ckpt: str = field(default_factory=lambda: _env("GROUNDING_DINO_CKPT"))
     sam2_config_dir: str = field(default_factory=lambda: _env("SAM2_CONFIG_DIR"))
@@ -70,10 +68,11 @@ class Settings:
     render_alpha: float = field(default_factory=lambda: _env_float("APEX_ALPHA", 0.92))
     render_pattern: str = field(default_factory=lambda: _env("APEX_PATTERN", "Straight"))
     render_max_dim: int = field(default_factory=lambda: _env_int("APEX_RENDER_MAX_DIM", 2048))
+    tile_texture_max_dim: int = field(default_factory=lambda: _env_int("APEX_TILE_TEXTURE_MAX_DIM", 1024))
+    tile_cache_max_items: int = field(default_factory=lambda: _env_int("APEX_TILE_CACHE_MAX_ITEMS", 32))
 
     def __post_init__(self) -> None:
         root = self.project_root
-
         self.assets_dir = Path(_env("APEX_ASSETS", str(root / "assets")))
         self.output_dir = Path(_env("APEX_OUTPUT", str(root / "output")))
         self.uploads_dir = Path(_env("APEX_UPLOADS", str(root / "uploads")))
@@ -82,7 +81,6 @@ class Settings:
 
         for folder in (self.assets_dir, self.output_dir, self.uploads_dir, self.catalog_dir, self.scenes_dir):
             folder.mkdir(parents=True, exist_ok=True)
-
         self.validate()
 
     def validate(self) -> None:
@@ -95,6 +93,10 @@ class Settings:
             raise ValueError("APEX_ALPHA must be between 0 and 1")
         if self.render_max_dim < 256:
             raise ValueError("APEX_RENDER_MAX_DIM must be at least 256")
+        if self.tile_texture_max_dim < 64:
+            raise ValueError("APEX_TILE_TEXTURE_MAX_DIM must be at least 64")
+        if self.tile_cache_max_items < 0:
+            raise ValueError("APEX_TILE_CACHE_MAX_ITEMS must not be negative")
         if self.render_tile_size_mm <= 0:
             raise ValueError("APEX_TILE_MM must be greater than 0")
         if self.render_grout_width < 0:
