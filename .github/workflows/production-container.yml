@@ -1,4 +1,4 @@
-name: APEX Vision AI v2.1 Validation
+name: APEX Vision AI v2.2 Performance Validation
 
 on:
   push:
@@ -13,12 +13,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: apex-v21-validation-${{ github.ref }}
+  group: apex-v22-validation-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   backend-tests:
-    name: Backend tests
+    name: Backend tests and performance baseline
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -36,6 +36,11 @@ jobs:
           APEX_AI_PROVIDER: light
           APEX_DEBUG: "true"
         run: pytest -q --maxfail=1
+      - name: Run performance baseline
+        env:
+          APEX_AI_PROVIDER: light
+          APEX_DEBUG: "true"
+        run: pytest -q tests/test_performance.py
 
   frontend-validation:
     name: Frontend lint and build
