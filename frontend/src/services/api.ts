@@ -39,12 +39,12 @@ export interface RenderRequest {
     grout_color: number[]; pattern: string;
 }
 
-export async function getRooms(): Promise<Room[]> { return getWithRetry("/api/rooms"); }
-export async function getCategories(): Promise<string[]> { return getWithRetry("/api/catalog/categories"); }
-export async function getFinishes(): Promise<string[]> { return getWithRetry("/api/catalog/finishes"); }
-export async function getSizes(): Promise<string[]> { return getWithRetry("/api/catalog/sizes"); }
-export async function getSeries(): Promise<string[]> { return getWithRetry("/api/catalog/series"); }
-export async function getTiles(): Promise<Tile[]> { return getWithRetry("/api/catalog/tiles"); }
+export async function getRooms(): Promise<Room[]> { return getWithRetry<Room[]>("/api/rooms"); }
+export async function getCategories(): Promise<string[]> { return getWithRetry<string[]>("/api/catalog/categories"); }
+export async function getFinishes(): Promise<string[]> { return getWithRetry<string[]>("/api/catalog/finishes"); }
+export async function getSizes(): Promise<string[]> { return getWithRetry<string[]>("/api/catalog/sizes"); }
+export async function getSeries(): Promise<string[]> { return getWithRetry<string[]>("/api/catalog/series"); }
+export async function getTiles(): Promise<Tile[]> { return getWithRetry<Tile[]>("/api/catalog/tiles"); }
 
 export interface RenderJob {
     job_id: string;
