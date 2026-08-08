@@ -76,7 +76,7 @@ def _run_render_job(job_id: str, room_path: str, room_key: str, tile_path: str, 
         final.update(status="done", progress=1.0, message="Done", image=f"/output/{filename}", filename=filename, duration_seconds=round(duration, 4))
         render_metrics.finished(duration)
         logger.info("Render job completed job_id=%s duration_seconds=%.3f", job_id, duration)
-    except Exception as exc:  # pragma: no cover - exercised by integration tests
+    except Exception:
         duration = time.perf_counter() - started_at
         render_metrics.failed(duration)
         logger.exception("Render job failed job_id=%s duration_seconds=%.3f", job_id, duration)
@@ -112,14 +112,14 @@ async def render(request: RenderRequest):
     return {"job_id": job_id, "status": "queued", "progress": 0.0, "message": "Queued"}
 
 
+@router.get("/metrics")
+def metrics():
+    return {"success": True, "metrics": render_metrics.snapshot()}
+
+
 @router.get("/{job_id}")
 def render_status(job_id: str):
     job = _jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job")
     return job
-
-
-@router.get("/metrics")
-def metrics():
-    return {"success": True, "metrics": render_metrics.snapshot()}
