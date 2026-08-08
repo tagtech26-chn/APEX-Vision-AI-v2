@@ -1,11 +1,3 @@
-FROM node:22-alpine AS frontend-build
-
-WORKDIR /frontend
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
-COPY frontend ./
-RUN npm run build
-
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -17,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY requirements-prod.txt ./requirements-prod.txt
+COPY requirements-prod.txt requirements-prod.txt
 RUN python -m pip install --upgrade pip \
     && pip install -r requirements-prod.txt
 
@@ -25,7 +17,7 @@ COPY app ./app
 COPY catalog ./catalog
 COPY assets ./assets
 COPY run.py ./run.py
-COPY --from=frontend-build /frontend/dist ./frontend/dist
+COPY infra/docker/healthcheck.py ./infra/docker/healthcheck.py
 
 RUN mkdir -p /app/output /app/uploads \
     && useradd --create-home --uid 10001 apex \
@@ -36,6 +28,6 @@ USER apex
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)" || exit 1
+    CMD python /app/infra/docker/healthcheck.py || exit 1
 
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
