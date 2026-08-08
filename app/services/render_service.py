@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import pickle
 import threading
+import time
+from collections import OrderedDict
 from pathlib import Path
 
 import cv2
@@ -17,10 +19,13 @@ from app.renderer.tile_renderer import TileRenderer
 
 logger = logging.getLogger("apex.render")
 _ANALYZER_LOCK = threading.Lock()
+_TILE_CACHE_LOCK = threading.Lock()
+_TILE_CACHE: OrderedDict[str, object] = OrderedDict()
+_TILE_CACHE_MAX = 32
 
 
 class RenderService:
-    """Loads or builds a SceneResult for a room, then renders a tile into it."""
+    """Loads/builds a SceneResult, then renders a tile with bounded reuse."""
 
     def __init__(self, analyzer=None, cache: SceneCache | None = None, renderer: TileRenderer | None = None) -> None:
         self.cache = cache or SceneCache()
@@ -35,34 +40,79 @@ class RenderService:
                     self.analyzer = build_scene_analyzer(settings.ai_provider)
         return self.analyzer
 
+    @staticmethod
+    def _tile_fingerprint(tile_path: Path) -> str:
+        stat = tile_path.stat()
+        return f"{tile_path.resolve()}:{stat.st_size}:{stat.st_mtime_ns}"
+
+    @staticmethod
+    def _load_tile(tile_path: Path):
+        key = RenderService._tile_fingerprint(tile_path)
+        with _TILE_CACHE_LOCK:
+            cached = _TILE_CACHE.get(key)
+            if cached is not None:
+                _TILE_CACHE.move_to_end(key)
+                return cached
+        tile = cv2.imread(str(tile_path))
+        if tile is None:
+            raise ValueError(f"Unable to load tile: {tile_path}")
+        with _TILE_CACHE_LOCK:
+            _TILE_CACHE[key] = tile
+            _TILE_CACHE.move_to_end(key)
+            while len(_TILE_CACHE) > _TILE_CACHE_MAX:
+                _TILE_CACHE.popitem(last=False)
+        return tile
+
+    @staticmethod
+    def _resize_for_render(image, max_dim: int):
+        height, width = image.shape[:2]
+        longest = max(height, width)
+        if longest <= max_dim:
+            return image
+        scale = max_dim / float(longest)
+        return cv2.resize(image, (max(1, int(width * scale)), max(1, int(height * scale))), interpolation=cv2.INTER_AREA)
+
     def render(self, room_path: str | Path, tile_path: str | Path, tile_size_mm: int = 600,
                grout_width: int = 2, grout_color=(220, 220, 220), pattern: str = "Straight",
                alpha: float = 0.92, progress_cb=None) -> str:
+        started = time.perf_counter()
         room_path = Path(room_path)
+        tile_path = Path(tile_path)
         if not room_path.exists():
             raise FileNotFoundError(f"Room image not found: {room_path}")
+        if not tile_path.exists():
+            raise FileNotFoundError(f"Tile image not found: {tile_path}")
 
         def report(fraction: float, message: str) -> None:
             if progress_cb is not None:
                 progress_cb(fraction, message)
 
         room_key = room_path.stem
+        scene_started = time.perf_counter()
         scene = self._load_or_build_scene(room_path, progress_cb=progress_cb)
-        tile = cv2.imread(str(tile_path))
-        if tile is None:
-            raise ValueError(f"Unable to load tile: {tile_path}")
+        render_metrics.stage("scene", time.perf_counter() - scene_started)
+
+        tile_started = time.perf_counter()
+        tile = self._load_tile(tile_path)
+        render_metrics.stage("tile_load", time.perf_counter() - tile_started)
 
         report(0.92, "Rendering tiles...")
-        logger.info("Rendering room=%s tile=%s size=%smm grout=%s pattern=%s", room_key, Path(tile_path).name, tile_size_mm, grout_width, pattern)
+        logger.info("Rendering room=%s tile=%s size=%smm grout=%s pattern=%s", room_key, tile_path.name, tile_size_mm, grout_width, pattern)
+        render_started = time.perf_counter()
         result = self.renderer.render(scene=scene, tile=tile, tile_size_mm=tile_size_mm,
                                       grout_width=grout_width, grout_color=grout_color,
                                       pattern=pattern, alpha=alpha)
+        render_metrics.stage("render", time.perf_counter() - render_started)
+
         report(0.97, "Writing image...")
         output_dir = settings.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
         output_file = output_dir / f"{room_key}_render.png"
+        write_started = time.perf_counter()
         if not cv2.imwrite(str(output_file), result):
             raise IOError(f"Unable to write render output: {output_file}")
+        render_metrics.stage("write", time.perf_counter() - write_started)
+        render_metrics.stage("total", time.perf_counter() - started)
         report(1.0, "Done")
         return str(output_file)
 
