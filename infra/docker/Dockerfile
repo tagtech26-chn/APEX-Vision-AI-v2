@@ -9,6 +9,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# OpenCV's native loader may require libxcb at runtime even in the
+# headless production package. Keep the runtime dependency explicit and
+# minimal rather than relying on a desktop/X11 stack.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libxcb1 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements-prod.txt requirements-prod.txt
 RUN python -m pip install --upgrade pip \
     && pip install -r requirements-prod.txt
