@@ -50,6 +50,7 @@ class Settings:
     port: int = field(default_factory=lambda: _env_int("APEX_PORT", 8000))
     debug: bool = field(default_factory=lambda: _env_bool("APEX_DEBUG", False))
     write_debug_images: bool = field(default_factory=lambda: _env_bool("APEX_WRITE_DEBUG", False))
+    app_version: str = field(default_factory=lambda: _env("APEX_VERSION", "2.1.0"))
 
     project_root: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent.parent)
 
@@ -100,6 +101,8 @@ class Settings:
         """Fail fast on invalid production configuration."""
         if self.port < 1 or self.port > 65535:
             raise ValueError("APEX_PORT must be between 1 and 65535")
+        if not self.app_version.strip():
+            raise ValueError("APEX_VERSION must not be empty")
         if self.ai_provider not in {"auto", "heavy", "light"}:
             raise ValueError("APEX_AI_PROVIDER must be one of: auto, heavy, light")
         if not self.allowed_hosts:
