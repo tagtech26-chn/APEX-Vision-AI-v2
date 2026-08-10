@@ -54,6 +54,8 @@ class TileRenderer:
             grout_width=grout_width,
             grout_color=grout_color,
         )
+        if self.projector.last_scale_diagnostics is not None:
+            scene.metadata["projection_scale"] = dict(self.projector.last_scale_diagnostics)
 
         projection = self.material.enhance(
             projection,
