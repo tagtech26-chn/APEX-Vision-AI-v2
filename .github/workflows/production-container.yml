@@ -1,4 +1,4 @@
-name: APEX Vision AI v2.2 Performance Validation
+name: APEX Vision AI v2.3 AI Accuracy Validation
 
 on:
   push:
@@ -13,12 +13,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: apex-v22-validation-${{ github.ref }}
+  group: apex-v23-validation-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   backend-tests:
-    name: Backend tests and performance baseline
+    name: Backend tests, performance and AI quality
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,7 +31,7 @@ jobs:
           cache-dependency-path: requirements-dev.txt
       - name: Install dependencies
         run: python -m pip install --upgrade pip && pip install -r requirements-dev.txt
-      - name: Run tests
+      - name: Run full test suite
         env:
           APEX_AI_PROVIDER: light
           APEX_DEBUG: "true"
@@ -41,6 +41,11 @@ jobs:
           APEX_AI_PROVIDER: light
           APEX_DEBUG: "true"
         run: pytest -q tests/test_performance.py
+      - name: Run AI quality regression gate
+        env:
+          APEX_AI_PROVIDER: light
+          APEX_DEBUG: "true"
+        run: pytest -q tests/test_scene_quality.py
 
   frontend-validation:
     name: Frontend lint and build
