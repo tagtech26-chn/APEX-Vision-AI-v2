@@ -43,3 +43,48 @@ def test_occlusion_rejects_mismatched_dimensions() -> None:
 
     with pytest.raises(ValueError, match="dimensions"):
         OcclusionMask.apply(alpha, protected)
+
+
+def test_occlusion_leakage_diagnostics_detects_leaked_alpha() -> None:
+    alpha = np.ones((4, 4), dtype=np.float32)
+    protected = np.zeros((4, 4), dtype=np.uint8)
+    protected[1:3, 1:3] = 255
+    alpha[1, 1] = 0.25
+
+    result = OcclusionMask.leakage_diagnostics(alpha, protected)
+
+    assert result == {
+        "protected_pixels": 4,
+        "leaked_pixels": 1,
+        "leakage_ratio": 0.25,
+        "passes": False,
+    }
+
+
+def test_occlusion_leakage_diagnostics_passes_after_carve() -> None:
+    alpha = np.ones((4, 4), dtype=np.float32)
+    protected = np.zeros((4, 4), dtype=np.uint8)
+    protected[1:3, 1:3] = 255
+
+    carved = OcclusionMask.apply(alpha, protected)
+    result = OcclusionMask.leakage_diagnostics(carved, protected)
+
+    assert result == {
+        "protected_pixels": 4,
+        "leaked_pixels": 0,
+        "leakage_ratio": 0.0,
+        "passes": True,
+    }
+
+
+def test_occlusion_leakage_diagnostics_without_mask_is_zero() -> None:
+    alpha = np.ones((2, 2), dtype=np.float32)
+
+    result = OcclusionMask.leakage_diagnostics(alpha, None)
+
+    assert result == {
+        "protected_pixels": 0,
+        "leaked_pixels": 0,
+        "leakage_ratio": 0.0,
+        "passes": True,
+    }
