@@ -99,7 +99,7 @@ jobs:
             -e APEX_DEBUG=false \
             -e APEX_CORS_ORIGINS=http://127.0.0.1:8000 \
             apex-vision-ai:${{ github.sha }}
-      - name: Smoke test production API and frontend
+      - name: Smoke test production API, frontend and security
         run: |
           set -e
           trap 'docker logs apex-smoke; docker rm -f apex-smoke' EXIT
@@ -168,6 +168,19 @@ jobs:
 
           print(f"Validated {len(assets)} production frontend assets")
           PY
+
+          echo "Validating security headers"
+          curl --fail --silent --dump-header /tmp/apex-headers.txt -o /dev/null http://127.0.0.1:8000/api/health
+          grep -Eiq '^x-content-type-options:[[:space:]]*nosniff' /tmp/apex-headers.txt
+          grep -Eiq '^x-frame-options:[[:space:]]*DENY' /tmp/apex-headers.txt
+          grep -Eiq '^referrer-policy:[[:space:]]*strict-origin-when-cross-origin' /tmp/apex-headers.txt
+          grep -Eiq '^permissions-policy:' /tmp/apex-headers.txt
+
+          echo "Validating trusted host rejection"
+          status=$(curl --silent --show-error -o /dev/null -w '%{http_code}' \
+            -H 'Host: invalid.apex.example' \
+            http://127.0.0.1:8000/api/health)
+          test "$status" = "400"
 
           docker inspect --format '{{.State.Status}}' apex-smoke | grep -qx running
       - name: Cleanup
