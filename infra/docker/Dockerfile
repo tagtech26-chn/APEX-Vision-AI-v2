@@ -1,3 +1,22 @@
+# ============================================================
+# Stage 1: Build frontend
+# ============================================================
+FROM node:22-alpine AS frontend-build
+
+WORKDIR /frontend
+
+COPY frontend/package.json frontend/package-lock.json ./
+
+RUN npm ci
+
+COPY frontend/ ./
+
+RUN npm run build
+
+
+# ============================================================
+# Stage 2: Production API
+# ============================================================
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -9,21 +28,33 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# OpenCV headless still requires a small set of native runtime libraries.
-# Keep the production image free of the full desktop/X11 stack.
+# OpenCV headless runtime libraries.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libxcb1 libgl1 libglib2.0-0 \
+    && apt-get install -y --no-install-recommends \
+        libxcb1 \
+        libgl1 \
+        libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
+# Python dependencies
 COPY requirements-prod.txt requirements-prod.txt
+
 RUN python -m pip install --upgrade pip \
     && pip install -r requirements-prod.txt
 
+# Backend/application files
 COPY app ./app
 COPY catalog ./catalog
 COPY assets ./assets
 COPY run.py ./run.py
 COPY infra/docker/healthcheck.py ./infra/docker/healthcheck.py
+
+# ============================================================
+# IMPORTANT:
+# Copy the compiled React SPA into the location expected by
+# app.main / frontend serving logic.
+# ============================================================
+COPY --from=frontend-build /frontend/dist ./frontend/dist
 
 RUN mkdir -p /app/output /app/uploads \
     && useradd --create-home --uid 10001 apex \
@@ -33,7 +64,11 @@ USER apex
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+HEALTHCHECK \
+    --interval=30s \
+    --timeout=5s \
+    --start-period=20s \
+    --retries=3 \
     CMD python /app/infra/docker/healthcheck.py || exit 1
 
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
