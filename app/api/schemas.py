@@ -17,9 +17,9 @@ class RenderRequest(BaseModel):
     grout_width: int = Field(default=2, ge=0, le=20)
     grout_color: list[int] = Field(default=[220, 220, 220], max_length=3)
     pattern: str = Field(default="Straight")
-    material_profile: Literal["generic", "ceramic", "stone", "wood", "vinyl", "carpet"] = Field(
-        default="generic",
-        description="Surface-specific material rendering profile.",
+    material_profile: Literal["auto", "generic", "ceramic", "stone", "wood", "vinyl", "carpet"] = Field(
+        default="auto",
+        description="Surface-specific rendering profile, or auto for deterministic baseline classification.",
     )
 
     @field_validator("grout_color")
