@@ -19,7 +19,10 @@ def client(tmp_path_factory):
 
     from app.main import app
 
-    with TestClient(app) as test_client:
+    # TrustedHostMiddleware intentionally rejects Starlette's default
+    # ``testserver`` host. Use an explicitly allowed production-style host
+    # so the integration suite validates the real security configuration.
+    with TestClient(app, base_url="http://127.0.0.1") as test_client:
         yield test_client
 
 
