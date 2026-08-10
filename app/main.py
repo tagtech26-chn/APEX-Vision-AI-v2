@@ -10,6 +10,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -52,17 +53,42 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="APEX Vision AI", version="2.1.0", description="AI floor detection, room segmentation and tile rendering.", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=_cors_origins(), allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app = FastAPI(
+    title="APEX Vision AI",
+    version="2.1.0",
+    description="AI floor detection, room segmentation and tile rendering.",
+    lifespan=lifespan,
+)
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=list(settings.allowed_hosts),
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins(),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.middleware("http")
-async def exception_and_cache_middleware(request: Request, call_next):
+async def security_and_exception_middleware(request: Request, call_next):
     try:
         response = await call_next(request)
     except Exception:
         logger.exception("Unhandled request failure: %s %s", request.method, request.url.path)
         return JSONResponse(status_code=500, content={"success": False, "error": "Internal server error"})
+
+    # Baseline response hardening. HSTS is opt-in because TLS termination is
+    # normally handled by the reverse proxy/load balancer in production.
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=()"
+    if settings.hsts_enabled:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
     if request.url.path.startswith("/output/"):
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
