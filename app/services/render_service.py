@@ -114,28 +114,35 @@ class RenderService:
         render_metrics.stage("tile_load", time.perf_counter() - tile_started)
 
         resolved_profile = material_profile
+        material_intelligence: dict[str, object]
         if material_profile == "auto":
             classify_started = time.perf_counter()
-            classification = classify_surface(tile)
-            resolved_profile = str(classification["material"])
-            scene.metadata["material_classification"] = classification
+            material_intelligence = classify_surface(tile)
+            resolved_profile = str(material_intelligence["material"])
+            scene.metadata["material_classification"] = material_intelligence
             render_metrics.stage("material_classification", time.perf_counter() - classify_started)
             logger.info(
-                "[AI] Material baseline profile=%s confidence=%.4f scale_factor=%.4f",
+                "[AI] Material baseline profile=%s finish=%s confidence=%.4f scale_factor=%.4f",
                 resolved_profile,
-                classification["confidence"],
-                classification["texture_scale_factor"],
+                material_intelligence["finish"],
+                material_intelligence["confidence"],
+                material_intelligence["texture_scale_factor"],
             )
         else:
-            scene.metadata["material_classification"] = {
+            material_intelligence = {
                 "material": resolved_profile,
+                "finish": "satin",
                 "confidence": 1.0,
                 "texture_scale_factor": 1.0,
                 "method": "explicit-profile",
             }
+            scene.metadata["material_classification"] = material_intelligence
 
         report(0.92, "Rendering tiles...")
-        logger.info("Rendering room=%s tile=%s size=%smm grout=%s pattern=%s material=%s", room_key, tile_path.name, tile_size_mm, grout_width, pattern, resolved_profile)
+        logger.info(
+            "Rendering room=%s tile=%s size=%smm grout=%s pattern=%s material=%s finish=%s",
+            room_key, tile_path.name, tile_size_mm, grout_width, pattern, resolved_profile, material_intelligence["finish"],
+        )
         render_started = time.perf_counter()
         result = self.renderer.render(
             scene=scene,
@@ -146,6 +153,7 @@ class RenderService:
             pattern=pattern,
             alpha=alpha,
             material_profile=resolved_profile,
+            material_intelligence=material_intelligence,
         )
         render_metrics.stage("render", time.perf_counter() - render_started)
 
