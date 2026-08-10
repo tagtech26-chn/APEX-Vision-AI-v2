@@ -14,9 +14,10 @@ def test_occlusion_removes_projection_from_protected_object() -> None:
     result = OcclusionMask.apply(alpha, protected)
 
     assert np.all(result[2:4, 2:4] == 0.0)
-    assert np.all(result[np.array([[True, False, False, False, False, False]] * 6)] >= 0.0)
     assert np.all(result[:2] == 1.0)
     assert np.all(result[4:] == 1.0)
+    assert np.all(result[2:4, :2] == 1.0)
+    assert np.all(result[2:4, 4:] == 1.0)
 
 
 def test_occlusion_preserves_existing_floor_alpha() -> None:
