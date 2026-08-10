@@ -78,13 +78,19 @@ class TileRenderer:
             scene.metadata.setdefault("occlusion", {})["applied"] = True
             scene.metadata["occlusion"]["protected_pixels"] = int((protected > 0).sum())
 
-        return self.projector.blend(
+        result = self.projector.blend(
             room=scene.image,
             projection=projection,
             floor_mask=render_mask,
             alpha=alpha,
             occlusion_mask=protected,
         )
+        if self.projector.last_occlusion_diagnostics is not None:
+            scene.metadata.setdefault("occlusion", {}).update(
+                self.projector.last_occlusion_diagnostics
+            )
+
+        return result
 
     @staticmethod
     def _floor_render_mask(scene: SceneResult) -> np.ndarray:
