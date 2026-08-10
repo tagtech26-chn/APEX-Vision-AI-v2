@@ -107,9 +107,20 @@ async def render(request: RenderRequest):
 
     job_id = uuid.uuid4().hex[:10]
     _room_current[room_key] = job_id
-    _job(job_id, status="queued", progress=0.0, message="Queued")
-    _executor.submit(_run_render_job, job_id, str(room), room_key, tile["image_path"], tile_size_mm=request.tile_size, grout_width=request.grout_width, grout_color=tuple(request.grout_color), pattern=request.pattern)
-    return {"job_id": job_id, "status": "queued", "progress": 0.0, "message": "Queued"}
+    _job(job_id, status="queued", progress=0.0, message="Queued", material_profile=request.material_profile)
+    _executor.submit(
+        _run_render_job,
+        job_id,
+        str(room),
+        room_key,
+        tile["image_path"],
+        tile_size_mm=request.tile_size,
+        grout_width=request.grout_width,
+        grout_color=tuple(request.grout_color),
+        pattern=request.pattern,
+        material_profile=request.material_profile,
+    )
+    return {"job_id": job_id, "status": "queued", "progress": 0.0, "message": "Queued", "material_profile": request.material_profile}
 
 
 @router.get("/metrics")
