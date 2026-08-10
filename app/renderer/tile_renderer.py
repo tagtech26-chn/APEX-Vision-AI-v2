@@ -73,11 +73,17 @@ class TileRenderer:
             floor_mask=render_mask,
         )
 
+        protected = scene.protected_object_mask
+        if protected is not None:
+            scene.metadata.setdefault("occlusion", {})["applied"] = True
+            scene.metadata["occlusion"]["protected_pixels"] = int((protected > 0).sum())
+
         return self.projector.blend(
             room=scene.image,
             projection=projection,
             floor_mask=render_mask,
             alpha=alpha,
+            occlusion_mask=protected,
         )
 
     @staticmethod
