@@ -26,7 +26,7 @@ _QUALITY_EVALUATOR = SceneQualityEvaluator()
 
 
 class RenderService:
-    """Loads/builds a SceneResult, then renders a tile with bounded reuse."""
+    """Loads/builds a SceneResult, then renders a material with bounded reuse."""
 
     def __init__(self, analyzer=None, cache: SceneCache | None = None, renderer: TileRenderer | None = None) -> None:
         self.cache = cache or SceneCache()
@@ -70,9 +70,18 @@ class RenderService:
                     _TILE_CACHE.popitem(last=False)
         return tile
 
-    def render(self, room_path: str | Path, tile_path: str | Path, tile_size_mm: int = 600,
-               grout_width: int = 2, grout_color=(220, 220, 220), pattern: str = "Straight",
-               alpha: float = 0.92, progress_cb=None) -> str:
+    def render(
+        self,
+        room_path: str | Path,
+        tile_path: str | Path,
+        tile_size_mm: int = 600,
+        grout_width: int = 2,
+        grout_color=(220, 220, 220),
+        pattern: str = "Straight",
+        material_profile: str = "generic",
+        alpha: float = 0.92,
+        progress_cb=None,
+    ) -> str:
         started = time.perf_counter()
         room_path = Path(room_path)
         tile_path = Path(tile_path)
@@ -104,11 +113,18 @@ class RenderService:
         render_metrics.stage("tile_load", time.perf_counter() - tile_started)
 
         report(0.92, "Rendering tiles...")
-        logger.info("Rendering room=%s tile=%s size=%smm grout=%s pattern=%s", room_key, tile_path.name, tile_size_mm, grout_width, pattern)
+        logger.info("Rendering room=%s tile=%s size=%smm grout=%s pattern=%s material=%s", room_key, tile_path.name, tile_size_mm, grout_width, pattern, material_profile)
         render_started = time.perf_counter()
-        result = self.renderer.render(scene=scene, tile=tile, tile_size_mm=tile_size_mm,
-                                      grout_width=grout_width, grout_color=grout_color,
-                                      pattern=pattern, alpha=alpha)
+        result = self.renderer.render(
+            scene=scene,
+            tile=tile,
+            tile_size_mm=tile_size_mm,
+            grout_width=grout_width,
+            grout_color=grout_color,
+            pattern=pattern,
+            alpha=alpha,
+            material_profile=material_profile,
+        )
         render_metrics.stage("render", time.perf_counter() - render_started)
 
         report(0.97, "Writing image...")
