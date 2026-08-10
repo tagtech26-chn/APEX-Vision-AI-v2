@@ -46,9 +46,12 @@ def test_occlusion_rejects_mismatched_dimensions() -> None:
 
 
 def test_occlusion_leakage_diagnostics_detects_leaked_alpha() -> None:
+    # Protected regions should normally already be carved out. Keep the
+    # surrounding floor opaque and introduce one deliberate fractional leak.
     alpha = np.ones((4, 4), dtype=np.float32)
     protected = np.zeros((4, 4), dtype=np.uint8)
     protected[1:3, 1:3] = 255
+    alpha[1:3, 1:3] = 0.0
     alpha[1, 1] = 0.25
 
     result = OcclusionMask.leakage_diagnostics(alpha, protected)
