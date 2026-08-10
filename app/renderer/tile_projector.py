@@ -24,6 +24,7 @@ class TileProjector:
         self.feather = MaskFeather()
         self.debug = debug
         self.last_scale_diagnostics: dict[str, float | int] | None = None
+        self.last_occlusion_diagnostics: dict[str, float | int | bool] | None = None
 
     @staticmethod
     def _to_square(tile: np.ndarray) -> np.ndarray:
@@ -141,6 +142,10 @@ class TileProjector:
     ) -> np.ndarray:
         """Blend projection over the floor while preserving protected objects."""
         mask = self.feather.feather(floor_mask, radius=31)
+        self.last_occlusion_diagnostics = OcclusionMask.leakage_diagnostics(
+            mask,
+            occlusion_mask,
+        )
         mask = OcclusionMask.apply(mask, occlusion_mask)[..., None]
 
         room = room.astype(np.float32)
