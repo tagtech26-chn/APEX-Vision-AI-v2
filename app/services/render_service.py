@@ -13,6 +13,7 @@ import cv2
 
 from app.ai.material.classifier import classify_surface
 from app.ai.quality import SceneQualityEvaluator
+from app.ai.scene.geometry_quality import evaluate_floor_geometry
 from app.ai.scene.result import SceneResult
 from app.cache.scene_cache import SceneCache
 from app.core.config import settings
@@ -103,10 +104,13 @@ class RenderService:
         quality_started = time.perf_counter()
         quality = _QUALITY_EVALUATOR.evaluate(scene)
         scene.metadata["quality"] = quality
+        geometry_quality = evaluate_floor_geometry(scene.floor_mask, scene.floor_polygon, scene.homography)
+        scene.metadata["geometry_quality"] = geometry_quality.as_dict()
         render_metrics.stage("quality", time.perf_counter() - quality_started)
         logger.info(
-            "[AI] Scene quality score=%.2f grade=%s floor_coverage=%.4f depth_valid=%.4f",
+            "[AI] Scene quality score=%.2f grade=%s floor_coverage=%.4f depth_valid=%.4f geometry_score=%.4f perspective=%.4f",
             quality["score"], quality["grade"], quality["floor_coverage"], quality["depth_valid_ratio"],
+            geometry_quality.score, geometry_quality.perspective_score,
         )
 
         tile_started = time.perf_counter()
