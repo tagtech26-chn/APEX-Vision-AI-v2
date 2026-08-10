@@ -130,6 +130,45 @@ jobs:
           curl --fail --silent --header "Accept: text/html" http://127.0.0.1:8000/ -o /tmp/apex-home.html
           grep -qi "<!doctype html>" /tmp/apex-home.html
 
+          echo "Validating frontend asset references"
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from urllib.parse import urljoin
+          from urllib.request import Request, urlopen
+
+          base = "http://127.0.0.1:8000/"
+
+          class AssetParser(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.assets = []
+              def handle_starttag(self, tag, attrs):
+                  attrs = dict(attrs)
+                  if tag == "script" and attrs.get("src"):
+                      self.assets.append(attrs["src"])
+                  elif tag == "link" and attrs.get("href") and attrs.get("rel", "").lower() in {"stylesheet", "modulepreload", "preload"}:
+                      self.assets.append(attrs["href"])
+
+          parser = AssetParser()
+          with open("/tmp/apex-home.html", encoding="utf-8") as fh:
+              parser.feed(fh.read())
+
+          assets = [urljoin(base, asset) for asset in parser.assets if not asset.startswith(("http://", "https://", "//", "data:"))]
+          js_assets = [asset for asset in assets if ".js" in asset]
+          if not js_assets:
+              raise SystemExit("No production JavaScript asset referenced by frontend HTML")
+
+          for asset in assets:
+              request = Request(asset, headers={"Accept": "*/*"})
+              with urlopen(request, timeout=10) as response:
+                  if response.status != 200:
+                      raise SystemExit(f"Frontend asset returned HTTP {response.status}: {asset}")
+                  if not response.read(1):
+                      raise SystemExit(f"Frontend asset is empty: {asset}")
+
+          print(f"Validated {len(assets)} production frontend assets")
+          PY
+
           docker inspect --format '{{.State.Status}}' apex-smoke | grep -qx running
       - name: Cleanup
         if: always()
