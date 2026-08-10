@@ -49,11 +49,7 @@ COPY assets ./assets
 COPY run.py ./run.py
 COPY infra/docker/healthcheck.py ./infra/docker/healthcheck.py
 
-# ============================================================
-# IMPORTANT:
-# Copy the compiled React SPA into the location expected by
-# app.main / frontend serving logic.
-# ============================================================
+# Copy the compiled React SPA into the location expected by app.main.
 COPY --from=frontend-build /frontend/dist ./frontend/dist
 
 RUN mkdir -p /app/output /app/uploads \
