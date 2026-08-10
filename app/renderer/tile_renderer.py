@@ -33,6 +33,7 @@ class TileRenderer:
         tile_size_mm: int = 600,
         pattern: str = "Straight",
         material_profile: str = "generic",
+        material_intelligence: dict[str, object] | None = None,
     ) -> np.ndarray:
         if scene.image is None:
             raise RuntimeError("Scene image missing.")
@@ -54,7 +55,12 @@ class TileRenderer:
             grout_color=grout_color,
         )
 
-        projection = self.material.enhance(projection, profile=material_profile)
+        projection = self.material.enhance(
+            projection,
+            profile=material_profile,
+            finish=str((material_intelligence or {}).get("finish", "satin")),
+            texture_scale_factor=float((material_intelligence or {}).get("texture_scale_factor", 1.0)),
+        )
 
         lighting = self.lighting.extract(scene.image, render_mask)
         projection = self.lighting.apply(projection, lighting, render_mask)
