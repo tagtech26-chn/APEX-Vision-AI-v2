@@ -11,6 +11,7 @@ from pathlib import Path
 
 import cv2
 
+from app.ai.material.classifier import classify_surface
 from app.ai.quality import SceneQualityEvaluator
 from app.ai.scene.result import SceneResult
 from app.cache.scene_cache import SceneCache
@@ -78,7 +79,7 @@ class RenderService:
         grout_width: int = 2,
         grout_color=(220, 220, 220),
         pattern: str = "Straight",
-        material_profile: str = "generic",
+        material_profile: str = "auto",
         alpha: float = 0.92,
         progress_cb=None,
     ) -> str:
@@ -112,8 +113,29 @@ class RenderService:
         tile = self._load_tile(tile_path)
         render_metrics.stage("tile_load", time.perf_counter() - tile_started)
 
+        resolved_profile = material_profile
+        if material_profile == "auto":
+            classify_started = time.perf_counter()
+            classification = classify_surface(tile)
+            resolved_profile = str(classification["material"])
+            scene.metadata["material_classification"] = classification
+            render_metrics.stage("material_classification", time.perf_counter() - classify_started)
+            logger.info(
+                "[AI] Material baseline profile=%s confidence=%.4f scale_factor=%.4f",
+                resolved_profile,
+                classification["confidence"],
+                classification["texture_scale_factor"],
+            )
+        else:
+            scene.metadata["material_classification"] = {
+                "material": resolved_profile,
+                "confidence": 1.0,
+                "texture_scale_factor": 1.0,
+                "method": "explicit-profile",
+            }
+
         report(0.92, "Rendering tiles...")
-        logger.info("Rendering room=%s tile=%s size=%smm grout=%s pattern=%s material=%s", room_key, tile_path.name, tile_size_mm, grout_width, pattern, material_profile)
+        logger.info("Rendering room=%s tile=%s size=%smm grout=%s pattern=%s material=%s", room_key, tile_path.name, tile_size_mm, grout_width, pattern, resolved_profile)
         render_started = time.perf_counter()
         result = self.renderer.render(
             scene=scene,
@@ -123,7 +145,7 @@ class RenderService:
             grout_color=grout_color,
             pattern=pattern,
             alpha=alpha,
-            material_profile=material_profile,
+            material_profile=resolved_profile,
         )
         render_metrics.stage("render", time.perf_counter() - render_started)
 
