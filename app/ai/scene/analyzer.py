@@ -70,19 +70,17 @@ class SceneAnalyzer:
         self,
         image: np.ndarray,
         floor_mask: np.ndarray,
-    ) -> tuple[np.ndarray, list[tuple[int, int, int, int]]]:
-        """Subtract furniture/rug masks from the floor mask (heavy stack only).
+    ) -> tuple[np.ndarray, list[tuple[int, int, int, int]], np.ndarray]:
+        """Subtract detected foreground objects and return their protected mask.
 
         GroundingDINO detects sofa/chair/table/plant prompts and SAM2 segments
-        each box; the union is removed from the floor so tile never covers the
-        furniture. Heuristic stacks return no obstructions and are untouched.
-
-        Returns the carved mask plus the table detection boxes (tables get the
-        full box carved, not just the SAM2 mask, so the caller can later
-        reclaim real floor that the oversized box removed).
+        each box. The union is both removed from the floor and retained as an
+        explicit protected-object mask so the renderer can guarantee that
+        projected material remains behind the detected objects.
         """
+        empty = np.zeros_like(floor_mask)
         if not hasattr(self.segmenter, "segment_many"):
-            return floor_mask, []
+            return floor_mask, [], empty
 
         try:
             detections = self.detector.detect(
@@ -91,34 +89,27 @@ class SceneAnalyzer:
             )
         except Exception as exc:
             logger.warning("Obstruction detection failed (%s); skipping carve.", exc)
-            return floor_mask, []
+            return floor_mask, [], empty
 
         boxes = [d.box for d in detections]
         if not boxes:
-            return floor_mask, []
+            return floor_mask, [], empty
 
         try:
             masks = self.segmenter.segment_many(image, boxes=boxes)
         except Exception as exc:
             logger.warning("Obstruction segmentation failed (%s); skipping carve.", exc)
-            return floor_mask, []
+            return floor_mask, [], empty
 
         obstruction = np.zeros_like(floor_mask)
         table_boxes_mask = np.zeros_like(floor_mask)
         table_box_list: list[tuple[int, int, int, int]] = []
         floor_area = int((floor_mask > 0).sum())
         for detection, mask in zip(detections, masks):
-            # SAM2 tables are usually incomplete (35-50% box coverage), which
-            # would leave the uncovered table surface tiled. Carve the whole
-            # detection box for tables instead of just the mask.
             if "table" in detection.label.lower():
                 x0, y0, x1, y1 = detection.box
                 table_boxes_mask[y0:y1, x0:x1] = 255
                 table_box_list.append((x0, y0, x1, y1))
-            # A rug covering most of the visible floor is either a false
-            # positive on the floor itself or a room-scale rug; either way the
-            # user wants that area tiled. Only carve rugs bounded inside the
-            # floor (a real area rug, typically well under half the floor).
             if "rug" in detection.label.lower() and floor_area > 0:
                 rug_area = int((mask > 0).sum())
                 if rug_area >= 0.5 * floor_area:
@@ -129,23 +120,18 @@ class SceneAnalyzer:
                     continue
             obstruction = np.maximum(obstruction, mask)
         obstruction = cv2.bitwise_or(obstruction, table_boxes_mask)
-        original = obstruction
-        # Erode obstructions vertically (99x1) so shadow strips hugging a
-        # furniture bottom edge are reclaimed as floor, then restore any
-        # small component (lamp, plant, ...) the kernel would erase entirely.
+        original = obstruction.copy()
         kernel = np.ones((99, 1), np.uint8)
         obstruction = cv2.erode(obstruction, kernel)
         count, labels, stats, _ = cv2.connectedComponentsWithStats(original)
         for idx in range(1, count):
             if stats[idx, cv2.CC_STAT_HEIGHT] < kernel.shape[0]:
                 obstruction[labels == idx] = 255
-        # Table boxes must stay solid: eroding them would reopen a strip of
-        # table surface (the very leak box-carving exists to prevent).
         obstruction = cv2.bitwise_or(obstruction, table_boxes_mask)
         obstruction = cv2.bitwise_and(obstruction, floor_mask)
 
         cleaned = cv2.subtract(floor_mask, obstruction)
-        return self._largest_component(cleaned), table_box_list
+        return self._largest_component(cleaned), table_box_list, obstruction
 
     @staticmethod
     def _reclaim_under_tables(
@@ -154,14 +140,7 @@ class SceneAnalyzer:
         plane: PlaneResult,
         table_boxes: list[tuple[int, int, int, int]],
     ) -> np.ndarray:
-        """Restore floor that full-box table carving over-removed.
-
-        GroundingDINO table boxes are usually taller/wider than the real
-        table, so ``_carve_obstructions`` removes real floor visible below
-        and beside the table (often shadowed, which is why the fill pass
-        leaves it out). Pixels inside a table box that still lie on the
-        fitted floor plane are reclaimed as floor.
-        """
+        """Restore floor that full-box table carving over-removed."""
         if not table_boxes or depth is None:
             return floor_mask
 
@@ -195,15 +174,7 @@ class SceneAnalyzer:
 
     @staticmethod
     def _fill_floor_notches(mask: np.ndarray, image: np.ndarray) -> np.ndarray:
-        """Fill narrow dips in the floor-mask top edge (heavy stack only).
-
-        SAM2 sometimes classifies a strip of shadowed floor under a sofa or
-        armchair as non-floor, leaving a gap in the tiled area. For each
-        narrow column run (<= ``max_width`` px) whose top edge dips more than
-        15px below its neighbours, the dip is filled upward -- stopping at
-        pixels darker than ``min_l`` LAB lightness so furniture fabric is not
-        tiled over.
-        """
+        """Fill narrow dips in the floor-mask top edge (heavy stack only)."""
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
         lightness = lab[:, :, 0].astype(np.int16)
         binary = mask > 0
@@ -295,9 +266,19 @@ class SceneAnalyzer:
         floor_mask = self.segmenter.segment(image, box=detection.box)
         if hasattr(self.segmenter, "segment_many"):
             floor_mask = self._fill_floor_notches(floor_mask, image)
-        floor_mask, table_boxes = self._carve_obstructions(image, floor_mask)
+        floor_mask, table_boxes, protected_mask = self._carve_obstructions(image, floor_mask)
         scene.floor_mask = floor_mask
-        logger.info("Floor mask built with %s", self.segmenter.name)
+        scene.protected_object_mask = protected_mask
+        scene.metadata["occlusion"] = {
+            "provider": self.detector.name,
+            "protected_pixels": int((protected_mask > 0).sum()),
+            "enabled": bool((protected_mask > 0).any()),
+        }
+        logger.info(
+            "Floor mask built with %s; protected object pixels=%d",
+            self.segmenter.name,
+            int((protected_mask > 0).sum()),
+        )
 
         report(0.55, "Building depth map...")
         depth = self.depth.predict(image)
@@ -349,7 +330,7 @@ def build_scene_analyzer(provider: str | None = None) -> SceneAnalyzer:
     if provider == "heavy":
         try:
             return _build_heavy()
-        except Exception as exc:  # pragma: no cover - depends on the machine
+        except Exception as exc:
             logger.warning("Heavy AI stack failed to initialise (%s); falling back to heuristics.", exc)
             return _build_light()
 
