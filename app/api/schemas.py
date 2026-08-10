@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 VALID_PATTERNS = {"Straight", "Brick", "Herringbone", "Chevron"}
+VALID_MATERIAL_PROFILES = {"generic", "ceramic", "stone", "wood", "vinyl", "carpet"}
 
 
 class RenderRequest(BaseModel):
@@ -14,6 +17,10 @@ class RenderRequest(BaseModel):
     grout_width: int = Field(default=2, ge=0, le=20)
     grout_color: list[int] = Field(default=[220, 220, 220], max_length=3)
     pattern: str = Field(default="Straight")
+    material_profile: Literal["generic", "ceramic", "stone", "wood", "vinyl", "carpet"] = Field(
+        default="generic",
+        description="Surface-specific material rendering profile.",
+    )
 
     @field_validator("grout_color")
     @classmethod
