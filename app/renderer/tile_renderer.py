@@ -12,8 +12,9 @@ from app.renderer.lighting_engine import LightingEngine
 from app.renderer.material_engine import MaterialEngine
 from app.renderer.tile_projector import TileProjector
 
+
 class TileRenderer:
-    """Composites a tile into a scene: grout -> project -> light -> match."""
+    """Composites a material into a scene using a surface-specific profile."""
 
     def __init__(self, debug: bool = False) -> None:
         self.projector = TileProjector(debug=debug)
@@ -31,6 +32,8 @@ class TileRenderer:
         grout_color=(220, 220, 220),
         tile_size_mm: int = 600,
         pattern: str = "Straight",
+        material_profile: str = "generic",
+        material_intelligence: dict[str, object] | None = None,
     ) -> np.ndarray:
         if scene.image is None:
             raise RuntimeError("Scene image missing.")
@@ -51,8 +54,15 @@ class TileRenderer:
             grout_width=grout_width,
             grout_color=grout_color,
         )
+        if self.projector.last_scale_diagnostics is not None:
+            scene.metadata["projection_scale"] = dict(self.projector.last_scale_diagnostics)
 
-        projection = self.material.enhance(projection)
+        projection = self.material.enhance(
+            projection,
+            profile=material_profile,
+            finish=str((material_intelligence or {}).get("finish", "satin")),
+            texture_scale_factor=float((material_intelligence or {}).get("texture_scale_factor", 1.0)),
+        )
 
         lighting = self.lighting.extract(scene.image, render_mask)
         projection = self.lighting.apply(projection, lighting, render_mask)
@@ -63,22 +73,28 @@ class TileRenderer:
             floor_mask=render_mask,
         )
 
-        return self.projector.blend(
+        protected = scene.protected_object_mask
+        if protected is not None:
+            scene.metadata.setdefault("occlusion", {})["applied"] = True
+            scene.metadata["occlusion"]["protected_pixels"] = int((protected > 0).sum())
+
+        result = self.projector.blend(
             room=scene.image,
             projection=projection,
             floor_mask=render_mask,
             alpha=alpha,
+            occlusion_mask=protected,
         )
+        if self.projector.last_occlusion_diagnostics is not None:
+            scene.metadata.setdefault("occlusion", {}).update(
+                self.projector.last_occlusion_diagnostics
+            )
+
+        return result
 
     @staticmethod
     def _floor_render_mask(scene: SceneResult) -> np.ndarray:
-        """Mask covering the visible floor to tile.
-
-        The segmentation mask already excludes furniture, rugs and other
-        obstructions (SAM2 carves them out; the heuristic path thresholds on
-        colour distance). Filling the whole polygon here would paint tile over
-        those obstructions, so we tile exactly the segmented floor.
-        """
+        """Mask covering the visible floor to tile."""
         if scene.floor_mask is None:
             return np.zeros(scene.size[::-1], dtype=np.uint8)
         return scene.floor_mask

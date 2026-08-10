@@ -1,0 +1,188 @@
+name: APEX Vision AI v2.3 AI Accuracy Validation
+
+on:
+  push:
+    branches:
+      - feature/v2.1-production-hardening
+  pull_request:
+    branches:
+      - feature/v2.1-production-hardening
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apex-v23-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  backend-tests:
+    name: Backend tests, performance and AI quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+      - name: Run full test suite
+        env:
+          APEX_AI_PROVIDER: light
+          APEX_DEBUG: "true"
+        run: pytest -q --maxfail=1
+      - name: Run performance baseline
+        env:
+          APEX_AI_PROVIDER: light
+          APEX_DEBUG: "true"
+        run: pytest -q tests/test_performance.py
+      - name: Run AI quality regression gate
+        env:
+          APEX_AI_PROVIDER: light
+          APEX_DEBUG: "true"
+        run: pytest -q tests/test_scene_quality.py
+      - name: Run floor geometry regression gate
+        run: pytest -q tests/test_geometry_quality.py
+      - name: Validate material benchmark contract
+        run: python scripts/validate_material_benchmark.py --output material-benchmark-summary.json
+      - name: Upload benchmark contract report
+        uses: actions/upload-artifact@v4
+        with:
+          name: material-benchmark-contract-${{ github.sha }}
+          path: material-benchmark-summary.json
+          if-no-files-found: error
+          retention-days: 14
+
+  frontend-validation:
+    name: Frontend lint and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+
+  container:
+    name: Production container smoke test
+    needs: [backend-tests, frontend-validation]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Build production image
+        run: docker build -f infra/docker/Dockerfile -t apex-vision-ai:${{ github.sha }} .
+      - name: Start container
+        run: |
+          docker run -d --name apex-smoke -p 8000:8000 \
+            -e APEX_AI_PROVIDER=light \
+            -e APEX_DEBUG=false \
+            -e APEX_CORS_ORIGINS=http://127.0.0.1:8000 \
+            apex-vision-ai:${{ github.sha }}
+      - name: Smoke test production API, frontend and security
+        run: |
+          set -e
+          trap 'docker logs apex-smoke; docker rm -f apex-smoke' EXIT
+          for i in {1..45}; do
+            if curl --fail --silent http://127.0.0.1:8000/api/health >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+
+          echo "Validating health"
+          curl --fail --silent http://127.0.0.1:8000/api/health | grep -q '"status":"ok"'
+
+          echo "Validating readiness"
+          curl --fail --silent http://127.0.0.1:8000/api/ready | grep -q '"status":"ready"'
+
+          echo "Validating diagnostics"
+          curl --fail --silent http://127.0.0.1:8000/api/diagnostics | grep -q '"application":"APEX Vision AI"'
+
+          echo "Validating render metrics contract"
+          curl --fail --silent http://127.0.0.1:8000/api/render/metrics | grep -q '"metrics"'
+
+          echo "Validating catalog API"
+          curl --fail --silent http://127.0.0.1:8000/api/catalog/tiles -o /tmp/apex-tiles.json
+          test -s /tmp/apex-tiles.json
+
+          echo "Validating production frontend"
+          curl --fail --silent --header "Accept: text/html" http://127.0.0.1:8000/ -o /tmp/apex-home.html
+          grep -qi "<!doctype html>" /tmp/apex-home.html
+
+          echo "Validating frontend asset references"
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from urllib.parse import urljoin
+          from urllib.request import Request, urlopen
+
+          base = "http://127.0.0.1:8000/"
+
+          class AssetParser(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.assets = []
+              def handle_starttag(self, tag, attrs):
+                  attrs = dict(attrs)
+                  if tag == "script" and attrs.get("src"):
+                      self.assets.append(attrs["src"])
+                  elif tag == "link" and attrs.get("href") and attrs.get("rel", "").lower() in {"stylesheet", "modulepreload", "preload"}:
+                      self.assets.append(attrs["href"])
+
+          parser = AssetParser()
+          with open("/tmp/apex-home.html", encoding="utf-8") as fh:
+              parser.feed(fh.read())
+
+          assets = [urljoin(base, asset) for asset in parser.assets if not asset.startswith(("http://", "https://", "//", "data:"))]
+          js_assets = [asset for asset in assets if ".js" in asset]
+          if not js_assets:
+              raise SystemExit("No production JavaScript asset referenced by frontend HTML")
+
+          for asset in assets:
+              request = Request(asset, headers={"Accept": "*/*"})
+              with urlopen(request, timeout=10) as response:
+                  if response.status != 200:
+                      raise SystemExit(f"Frontend asset returned HTTP {response.status}: {asset}")
+                  if not response.read(1):
+                      raise SystemExit(f"Frontend asset is empty: {asset}")
+
+          print(f"Validated {len(assets)} production frontend assets")
+          PY
+
+          echo "Validating security headers"
+          curl --fail --silent --dump-header /tmp/apex-headers.txt -o /dev/null http://127.0.0.1:8000/api/health
+          grep -Eiq '^x-content-type-options:[[:space:]]*nosniff' /tmp/apex-headers.txt
+          grep -Eiq '^x-frame-options:[[:space:]]*DENY' /tmp/apex-headers.txt
+          grep -Eiq '^referrer-policy:[[:space:]]*strict-origin-when-cross-origin' /tmp/apex-headers.txt
+          grep -Eiq '^permissions-policy:' /tmp/apex-headers.txt
+
+          echo "Validating trusted host rejection"
+          status=$(curl --silent --show-error -o /dev/null -w '%{http_code}' \
+            -H 'Host: invalid.apex.example' \
+            http://127.0.0.1:8000/api/health)
+          test "$status" = "400"
+
+          docker inspect --format '{{.State.Status}}' apex-smoke | grep -qx running
+      - name: Cleanup
+        if: always()
+        run: docker rm -f apex-smoke || true

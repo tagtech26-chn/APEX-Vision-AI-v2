@@ -65,9 +65,8 @@ def test_texture_carve_removes_patterned_rug():
     from app.ai.segmentation.heuristic import estimate_floor_mask
 
     image = np.zeros((240, 320, 3), dtype=np.uint8)
-    image[:, :] = (90, 120, 150)  # uniform floor
+    image[:, :] = (90, 120, 150)
 
-    # Rug: close to the floor colour but textured, so colour alone can't split it.
     rng = np.random.default_rng(0)
     rug_colour = np.full((100, 120, 3), (95, 125, 155), dtype=np.int16)
     noise = rng.integers(-45, 45, (100, 120, 3))
@@ -78,7 +77,6 @@ def test_texture_carve_removes_patterned_rug():
     rug[80:180, 100:220] = 255
 
     assert (mask[rug > 0] > 0).mean() < 0.5
-    # The rest of the floor survives the carve.
     assert (mask > 0).sum() > 0.5 * image.shape[0] * image.shape[1]
 
 
@@ -123,16 +121,16 @@ def test_obstruction_carve_subtracts_furniture():
     image = np.zeros((300, 300, 3), dtype=np.uint8)
     floor_mask = np.full((300, 300), 255, dtype=np.uint8)
 
-    result, table_boxes = analyzer._carve_obstructions(image, floor_mask)
+    result, table_boxes, protected_mask = analyzer._carve_obstructions(image, floor_mask)
 
-    # Small obstructions (fully erased by the 99x1 erosion) are restored and carved whole.
     assert (result[20:50, 10:40] == 0).all()
-    # Large obstructions keep a vertically-shrunk core (99x1 erosion trims ~49px top/bottom).
     assert (result[149:200, 100:250] == 0).all()
     assert (result[100:148, 100:250] > 0).all()
     assert (result[240:290, 240:290] > 0).all()
-    # No tables in this fixture -> no table boxes to reclaim.
     assert table_boxes == []
+    assert protected_mask.shape == floor_mask.shape
+    assert (protected_mask[20:50, 10:40] == 255).all()
+    assert (protected_mask[100:250, 100:250] == 255).all()
 
 
 def test_obstruction_carve_table_box_stays_solid():
@@ -140,7 +138,6 @@ def test_obstruction_carve_table_box_stays_solid():
         def detect(self, image, prompt):
             if prompt == "floor":
                 return [Detection(label="floor", score=1.0, box=(0, 0, 300, 300))]
-            # Table whose SAM2 mask only covers the upper-left corner of the box.
             return [Detection(label="table", score=0.9, box=(50, 50, 250, 250))]
 
     class _PartialMaskSegmenter(_FakeSegmenter):
@@ -155,12 +152,11 @@ def test_obstruction_carve_table_box_stays_solid():
     image = np.zeros((300, 300, 3), dtype=np.uint8)
     floor_mask = np.full((300, 300), 255, dtype=np.uint8)
 
-    result, table_boxes = analyzer._carve_obstructions(image, floor_mask)
+    result, table_boxes, protected_mask = analyzer._carve_obstructions(image, floor_mask)
 
-    # The full detection box is carved even though the mask only covers part of it.
     assert (result[50:250, 50:250] == 0).all()
-    # And the box is reported so the caller can reclaim floor around the table.
     assert table_boxes == [(50, 50, 250, 250)]
+    assert (protected_mask[50:250, 50:250] == 255).all()
 
 
 def test_obstruction_carve_skipped_without_segment_many():
@@ -174,9 +170,10 @@ def test_obstruction_carve_skipped_without_segment_many():
     image = np.zeros((100, 100, 3), dtype=np.uint8)
     floor_mask = np.full((100, 100), 255, dtype=np.uint8)
 
-    result, table_boxes = analyzer._carve_obstructions(image, floor_mask)
+    result, table_boxes, protected_mask = analyzer._carve_obstructions(image, floor_mask)
     assert result is floor_mask
     assert table_boxes == []
+    assert not protected_mask.any()
 
 
 def test_obstruction_carve_skipped_without_detections():
@@ -190,17 +187,15 @@ def test_obstruction_carve_skipped_without_detections():
     image = np.zeros((300, 300, 3), dtype=np.uint8)
     floor_mask = np.full((300, 300), 255, dtype=np.uint8)
 
-    result, table_boxes = analyzer._carve_obstructions(image, floor_mask)
+    result, table_boxes, protected_mask = analyzer._carve_obstructions(image, floor_mask)
     assert result is floor_mask
     assert table_boxes == []
+    assert not protected_mask.any()
 
 
 def test_reclaim_under_tables_restores_on_plane_floor():
     h, w = 200, 200
     ys, xs = np.mgrid[0:h, 0:w]
-    # Planar in the middle, bowed at the edges: the plane fit leaves residuals
-    # that grow toward the borders, so the box (centre) sits well inside the
-    # tolerance and its floor is restored as one connected piece.
     depth = (
         0.5
         + 0.001 * xs
@@ -212,13 +207,12 @@ def test_reclaim_under_tables_restores_on_plane_floor():
     plane = PlaneEstimator(seed=1).estimate(floor, depth)
 
     carved = floor.copy()
-    carved[50:150, 50:150] = 0  # table box carve (still on the floor plane)
+    carved[50:150, 50:150] = 0
 
     result = SceneAnalyzer._reclaim_under_tables(
         carved, depth, plane, [(50, 50, 150, 150)]
     )
 
-    # On-plane floor removed by the box carve is restored.
     assert (result[50:150, 50:150] == 255).all()
 
 
@@ -232,12 +226,11 @@ def test_reclaim_under_tables_keeps_off_plane_object():
     carved = floor.copy()
     carved[50:150, 50:150] = 0
     raised = depth.copy()
-    raised[50:150, 50:150] += 0.5  # table body sits well above the floor plane
+    raised[50:150, 50:150] += 0.5
 
     result = SceneAnalyzer._reclaim_under_tables(
         carved, raised, plane, [(50, 50, 150, 150)]
     )
 
-    # Off-plane pixels stay carved.
     assert (result[50:150, 50:150] == 0).all()
     assert (result[:50, :] > 0).all()

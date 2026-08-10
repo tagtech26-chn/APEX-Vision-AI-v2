@@ -19,7 +19,10 @@ def client(tmp_path_factory):
 
     from app.main import app
 
-    with TestClient(app) as test_client:
+    # TrustedHostMiddleware intentionally rejects Starlette's default
+    # ``testserver`` host. Use an explicitly allowed production-style host
+    # so the integration suite validates the real security configuration.
+    with TestClient(app, base_url="http://127.0.0.1") as test_client:
         yield test_client
 
 
@@ -32,7 +35,7 @@ def test_home(client):
     else:
         data = response.json()
         assert data["status"] == "Running"
-        assert data["version"] == "2.0.0"
+        assert data["version"] == "2.1.0"
 
 
 def test_health(client):

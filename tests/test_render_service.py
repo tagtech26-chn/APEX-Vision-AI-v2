@@ -19,32 +19,25 @@ class _StubAnalyzer:
         image = np.zeros((200, 300, 3), dtype=np.uint8)
         mask = np.zeros((200, 300), dtype=np.uint8)
         mask[100:, 40:260] = 255
-        scene = SceneResult(
+        return SceneResult(
             image=image,
             width=300,
             height=200,
             floor_mask=mask,
-            floor_polygon=np.array(
-                [[60, 100], [240, 100], [280, 199], [20, 199]], dtype=np.float32
-            ),
+            floor_polygon=np.array([[60, 100], [240, 100], [280, 199], [20, 199]], dtype=np.float32),
             homography=np.eye(3, dtype=np.float32),
         )
-        return scene
+
+
+def _cache(tmp_path):
+    return SceneCache(root=tmp_path / "scenes", signing_key="test-only-key")
 
 
 def test_render_service_writes_output(room_image_path, tile_image_path, tmp_path):
-    cache = SceneCache(root=tmp_path / "scenes")
-    analyzer = _StubAnalyzer()
-    service = RenderService(analyzer=analyzer, cache=cache)
-
-    out = service.render(
-        room_path=room_image_path,
-        tile_path=tile_image_path,
-        pattern="Chevron",
-    )
+    service = RenderService(analyzer=_StubAnalyzer(), cache=_cache(tmp_path))
+    out = service.render(room_path=room_image_path, tile_path=tile_image_path, pattern="Chevron")
 
     import cv2
-
     from pathlib import Path
 
     assert Path(out).exists()
@@ -54,7 +47,7 @@ def test_render_service_writes_output(room_image_path, tile_image_path, tmp_path
 
 
 def test_render_service_caches_scene(room_image_path, tile_image_path, tmp_path):
-    cache = SceneCache(root=tmp_path / "scenes")
+    cache = _cache(tmp_path)
     analyzer = _StubAnalyzer()
     service = RenderService(analyzer=analyzer, cache=cache)
 
@@ -66,7 +59,7 @@ def test_render_service_caches_scene(room_image_path, tile_image_path, tmp_path)
 
 
 def test_scene_cache_roundtrip(tmp_path):
-    cache = SceneCache(root=tmp_path / "scenes")
+    cache = _cache(tmp_path)
     scene = SceneResult(
         image=np.zeros((10, 10, 3), dtype=np.uint8),
         width=10,

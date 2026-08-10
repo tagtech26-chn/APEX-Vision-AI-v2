@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0.0",
+  "dataset": "apex-vision-ai-materials",
+  "minimum_samples": 100,
+  "metrics": {
+    "material": {
+      "accuracy": 0.90,
+      "macro_f1": 0.90
+    },
+    "finish": {
+      "accuracy": 0.85,
+      "macro_f1": 0.85
+    }
+  },
+  "activation": {
+    "required_dataset_status": "production",
+    "required_split": "test",
+    "min_test_samples": 100
+  }
+}

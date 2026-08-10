@@ -7,25 +7,28 @@ import numpy as np
 
 from app.renderer.grout_engine import GroutEngine
 from app.renderer.mask_feather import MaskFeather
+from app.renderer.occlusion import OcclusionMask
 from app.renderer.patterns import TilePatterns
+from app.renderer.projection_scale import evaluate_projection_scale
 
 
 class TileProjector:
     """Wraps a patterned canvas into the room perspective."""
+
+    PLANE_SPAN_PIXELS = 2048
+    REFERENCE_FLOOR_MM = 7800
 
     def __init__(self, debug: bool = False) -> None:
         self.patterns = TilePatterns()
         self.grout = GroutEngine()
         self.feather = MaskFeather()
         self.debug = debug
+        self.last_scale_diagnostics: dict[str, float | int] | None = None
+        self.last_occlusion_diagnostics: dict[str, float | int | bool] | None = None
 
     @staticmethod
     def _to_square(tile: np.ndarray) -> np.ndarray:
-        """Center-crop a texture swatch to a square so it isn't stretched.
-
-        Catalog textures are rectangles (2:1, 1.5:1); resizing them straight
-        to a square distorts the pattern. Crop the largest centered square.
-        """
+        """Center-crop a texture swatch to a square so it isn't stretched."""
         h, w = tile.shape[:2]
         if h == w:
             return tile
@@ -35,19 +38,11 @@ class TileProjector:
         return tile[y0 : y0 + side, x0 : x0 + side]
 
     def _tile_pixels(self, tile_size_mm: int) -> int:
-        """Projected tile size in canvas pixels.
-
-        The homography plane is a fixed 2048px square representing the whole
-        floor quad, so the number of tiles across the floor must be derived
-        from that span (not image width). Sizes are kept strictly
-        proportional to the tile edge: 600mm ~ 13 tiles, 300mm ~ 26,
-        1200mm ~ 6 across a ~7m floor.
-        """
-        plane_span = 2048
+        """Return projected tile size in the fixed physical floor canvas."""
         size = max(100, int(tile_size_mm))
-        tiles_across = int(round(7800.0 / size))
+        tiles_across = int(round(self.REFERENCE_FLOOR_MM / size))
         tiles_across = max(3, min(tiles_across, 40))
-        return max(48, plane_span // tiles_across)
+        return max(48, self.PLANE_SPAN_PIXELS // tiles_across)
 
     @staticmethod
     def _plane_shift(
@@ -55,13 +50,7 @@ class TileProjector:
         floor_mask: np.ndarray,
         canvas_size: int,
     ) -> tuple[float, float]:
-        """Shift (px) to centre the floor mask in the pattern canvas.
-
-        Applies the homography to every floor pixel and returns the shift
-        needed to place the mask's plane-space bounding box in the middle of
-        the canvas. Falls back to (0, 0) when the mask is empty or the box
-        cannot fit.
-        """
+        """Shift (px) to centre the floor mask in the pattern canvas."""
         rows, cols = np.where(floor_mask > 0)
         if rows.size == 0:
             return 0.0, 0.0
@@ -70,8 +59,12 @@ class TileProjector:
             [cols, rows, np.ones_like(cols, dtype=np.float64)], axis=-1
         )
         plane = points @ homography.T
-        px = plane[:, 0] / plane[:, 2]
-        py = plane[:, 1] / plane[:, 2]
+        denominator = plane[:, 2]
+        valid = np.abs(denominator) > 1e-10
+        if not np.any(valid):
+            return 0.0, 0.0
+        px = plane[valid, 0] / denominator[valid]
+        py = plane[valid, 1] / denominator[valid]
 
         cx = 0.5 * (float(px.min()) + float(px.max()))
         cy = 0.5 * (float(py.min()) + float(py.max()))
@@ -100,22 +93,16 @@ class TileProjector:
 
         width, height = output_size
         tile_pixels = self._tile_pixels(tile_size_mm)
+        self.last_scale_diagnostics = evaluate_projection_scale(
+            tile_size_mm=tile_size_mm,
+            tile_pixels=tile_pixels,
+            plane_span_pixels=self.PLANE_SPAN_PIXELS,
+            reference_floor_mm=self.REFERENCE_FLOOR_MM,
+        ).as_dict()
 
-        # Center-crop the swatch to a square, resize to the projected tile
-        # size, and apply grout AFTER resizing so the lines stay visible at
-        # the rendered scale instead of being scaled into invisibility.
         tile = self._to_square(tile_image)
-        tile = cv2.resize(
-            tile,
-            (tile_pixels, tile_pixels),
-            interpolation=cv2.INTER_CUBIC,
-        )
-        tile = self.grout.apply(
-            tile=tile,
-            grout_width_mm=grout_width,
-            grout_color=grout_color,
-        )
-
+        tile = cv2.resize(tile, (tile_pixels, tile_pixels), interpolation=cv2.INTER_CUBIC)
+        tile = self.grout.apply(tile=tile, grout_width_mm=grout_width, grout_color=grout_color)
         canvas = self.patterns.create(tile, pattern)
 
         try:
@@ -123,16 +110,10 @@ class TileProjector:
         except np.linalg.LinAlgError:
             transform = homography
 
-        # Floor pixels can map to plane coords outside the quad's [0, 2048]
-        # square (e.g. shadowed floor beside a table). warpPerspective paints
-        # those black, so shift the sampling so the whole floor mask lands
-        # inside the pattern canvas.
         if floor_mask is not None:
             sx, sy = self._plane_shift(homography, floor_mask, canvas.shape[0])
             if sx or sy:
-                shift = np.array(
-                    [[1, 0, -sx], [0, 1, -sy], [0, 0, 1]], dtype=np.float64
-                )
+                shift = np.array([[1, 0, -sx], [0, 1, -sy], [0, 0, 1]], dtype=np.float64)
                 transform = transform @ shift
 
         warped = cv2.warpPerspective(
@@ -157,14 +138,18 @@ class TileProjector:
         projection: np.ndarray,
         floor_mask: np.ndarray,
         alpha: float = 0.92,
+        occlusion_mask: np.ndarray | None = None,
     ) -> np.ndarray:
+        """Blend projection over the floor while preserving protected objects."""
         mask = self.feather.feather(floor_mask, radius=31)
-        mask = mask[..., None]
+        self.last_occlusion_diagnostics = OcclusionMask.leakage_diagnostics(
+            mask,
+            occlusion_mask,
+        )
+        mask = OcclusionMask.apply(mask, occlusion_mask)[..., None]
 
         room = room.astype(np.float32)
         projection = projection.astype(np.float32)
-
-        # Blend the projection slightly with the original floor so seams vanish.
         projection = projection * alpha + room * (1.0 - alpha)
 
         result = room * (1.0 - mask) + projection * mask

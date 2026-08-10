@@ -31,6 +31,7 @@ class SceneResult:
     wall_mask: np.ndarray | None = None
     ceiling_mask: np.ndarray | None = None
     depth_map: np.ndarray | None = None
+    protected_object_mask: np.ndarray | None = None
 
     # Geometry
     floor_polygon: np.ndarray | None = None
