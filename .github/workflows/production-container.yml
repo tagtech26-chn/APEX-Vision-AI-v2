@@ -49,6 +49,15 @@ jobs:
           APEX_AI_PROVIDER: light
           APEX_DEBUG: "true"
         run: pytest -q tests/test_scene_quality.py
+      - name: Validate material benchmark contract
+        run: python scripts/validate_material_benchmark.py --output material-benchmark-summary.json
+      - name: Upload benchmark contract report
+        uses: actions/upload-artifact@v4
+        with:
+          name: material-benchmark-contract-${{ github.sha }}
+          path: material-benchmark-summary.json
+          if-no-files-found: error
+          retention-days: 14
 
   frontend-validation:
     name: Frontend lint and build
