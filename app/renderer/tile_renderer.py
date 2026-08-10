@@ -12,8 +12,9 @@ from app.renderer.lighting_engine import LightingEngine
 from app.renderer.material_engine import MaterialEngine
 from app.renderer.tile_projector import TileProjector
 
+
 class TileRenderer:
-    """Composites a tile into a scene: grout -> project -> light -> match."""
+    """Composites a material into a scene using a surface-specific profile."""
 
     def __init__(self, debug: bool = False) -> None:
         self.projector = TileProjector(debug=debug)
@@ -31,6 +32,7 @@ class TileRenderer:
         grout_color=(220, 220, 220),
         tile_size_mm: int = 600,
         pattern: str = "Straight",
+        material_profile: str = "generic",
     ) -> np.ndarray:
         if scene.image is None:
             raise RuntimeError("Scene image missing.")
@@ -52,7 +54,7 @@ class TileRenderer:
             grout_color=grout_color,
         )
 
-        projection = self.material.enhance(projection)
+        projection = self.material.enhance(projection, profile=material_profile)
 
         lighting = self.lighting.extract(scene.image, render_mask)
         projection = self.lighting.apply(projection, lighting, render_mask)
@@ -72,13 +74,7 @@ class TileRenderer:
 
     @staticmethod
     def _floor_render_mask(scene: SceneResult) -> np.ndarray:
-        """Mask covering the visible floor to tile.
-
-        The segmentation mask already excludes furniture, rugs and other
-        obstructions (SAM2 carves them out; the heuristic path thresholds on
-        colour distance). Filling the whole polygon here would paint tile over
-        those obstructions, so we tile exactly the segmented floor.
-        """
+        """Mask covering the visible floor to tile."""
         if scene.floor_mask is None:
             return np.zeros(scene.size[::-1], dtype=np.uint8)
         return scene.floor_mask
