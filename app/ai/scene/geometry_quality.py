@@ -29,6 +29,25 @@ class GeometryQuality:
             "score": self.score,
         }
 
+    def passes_regression_gate(
+        self,
+        *,
+        min_score: float = 0.60,
+        min_floor_coverage: float = 0.05,
+    ) -> bool:
+        """Return whether geometry is strong enough for a regression fixture.
+
+        This is deliberately a regression gate, not a claim of semantic accuracy.
+        Real-world quality thresholds must be calibrated against labelled data.
+        """
+        return (
+            0.0 <= min_score <= 1.0
+            and 0.0 <= min_floor_coverage <= 1.0
+            and self.floor_coverage >= min_floor_coverage
+            and self.homography_valid
+            and self.score >= min_score
+        )
+
 
 def evaluate_floor_geometry(
     floor_mask: np.ndarray | None,
