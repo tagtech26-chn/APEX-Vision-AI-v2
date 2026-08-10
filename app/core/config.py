@@ -35,6 +35,13 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_list(name: str, default: tuple[str, ...] = ()) -> tuple[str, ...]:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    return tuple(item.strip() for item in raw.split(",") if item.strip())
+
+
 @dataclass(slots=True)
 class Settings:
     """Runtime configuration for the APEX Vision AI application."""
@@ -53,6 +60,12 @@ class Settings:
     scenes_dir: Path = field(default_factory=Path)
 
     ai_provider: str = field(default_factory=lambda: _env("APEX_AI_PROVIDER", "auto").lower())
+
+    # Production network/security controls.
+    allowed_hosts: tuple[str, ...] = field(
+        default_factory=lambda: _env_list("APEX_ALLOWED_HOSTS", ("localhost", "127.0.0.1"))
+    )
+    hsts_enabled: bool = field(default_factory=lambda: _env_bool("APEX_HSTS_ENABLED", False))
 
     grounding_dino_config: str = field(default_factory=lambda: _env("GROUNDING_DINO_CONFIG"))
     grounding_dino_ckpt: str = field(default_factory=lambda: _env("GROUNDING_DINO_CKPT"))
@@ -89,6 +102,8 @@ class Settings:
             raise ValueError("APEX_PORT must be between 1 and 65535")
         if self.ai_provider not in {"auto", "heavy", "light"}:
             raise ValueError("APEX_AI_PROVIDER must be one of: auto, heavy, light")
+        if not self.allowed_hosts:
+            raise ValueError("APEX_ALLOWED_HOSTS must contain at least one host")
         if not 0.0 <= self.render_alpha <= 1.0:
             raise ValueError("APEX_ALPHA must be between 0 and 1")
         if self.render_max_dim < 256:
