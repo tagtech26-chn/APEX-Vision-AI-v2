@@ -120,18 +120,25 @@ class SceneAnalyzer:
                     continue
             obstruction = np.maximum(obstruction, mask)
         obstruction = cv2.bitwise_or(obstruction, table_boxes_mask)
-        original = obstruction.copy()
+
+        # Keep the complete detected/segmented object footprint for rendering
+        # protection. The carved mask below may intentionally be eroded to
+        # avoid over-removing narrow floor regions, but that must not shrink the
+        # renderer's protected-object contract.
+        protected_mask = cv2.bitwise_and(obstruction, floor_mask)
+
+        carve_mask = obstruction.copy()
         kernel = np.ones((99, 1), np.uint8)
-        obstruction = cv2.erode(obstruction, kernel)
-        count, labels, stats, _ = cv2.connectedComponentsWithStats(original)
+        carve_mask = cv2.erode(carve_mask, kernel)
+        count, labels, stats, _ = cv2.connectedComponentsWithStats(obstruction)
         for idx in range(1, count):
             if stats[idx, cv2.CC_STAT_HEIGHT] < kernel.shape[0]:
-                obstruction[labels == idx] = 255
-        obstruction = cv2.bitwise_or(obstruction, table_boxes_mask)
-        obstruction = cv2.bitwise_and(obstruction, floor_mask)
+                carve_mask[labels == idx] = 255
+        carve_mask = cv2.bitwise_or(carve_mask, table_boxes_mask)
+        carve_mask = cv2.bitwise_and(carve_mask, floor_mask)
 
-        cleaned = cv2.subtract(floor_mask, obstruction)
-        return self._largest_component(cleaned), table_box_list, obstruction
+        cleaned = cv2.subtract(floor_mask, carve_mask)
+        return self._largest_component(cleaned), table_box_list, protected_mask
 
     @staticmethod
     def _reclaim_under_tables(
