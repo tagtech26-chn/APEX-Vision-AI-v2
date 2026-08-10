@@ -22,4 +22,19 @@ def test_render_metrics_snapshot_tracks_jobs_and_cache() -> None:
         "cache_hits": 1,
         "cache_misses": 1,
         "cache_errors": 1,
+        "stage_average_seconds": {},
+    }
+
+
+def test_render_metrics_snapshot_tracks_stage_averages() -> None:
+    metrics = RenderMetrics()
+    metrics.stage("tile_load", 0.2)
+    metrics.stage("tile_load", 0.4)
+    metrics.stage("render", 1.0)
+
+    snapshot = metrics.snapshot()
+
+    assert snapshot["stage_average_seconds"] == {
+        "tile_load": 0.3,
+        "render": 1.0,
     }
