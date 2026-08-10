@@ -47,9 +47,12 @@ def test_singular_homography_is_rejected() -> None:
 
 
 def test_regression_gate_rejects_low_score_or_coverage() -> None:
-    mask = np.ones((100, 100), dtype=np.uint8)
-    polygon = np.array([[0, 0], [99, 0], [99, 99], [0, 99]], dtype=np.float32)
+    mask = np.zeros((100, 100), dtype=np.uint8)
+    mask[:10, :10] = 255
+    polygon = np.array([[0, 0], [9, 0], [9, 9], [0, 9]], dtype=np.float32)
     quality = evaluate_floor_geometry(mask, polygon, np.eye(3))
 
+    # This fixture is intentionally weak: it should fail a high quality threshold.
+    assert quality.score < 0.99
     assert quality.passes_regression_gate(min_score=0.99) is False
-    assert quality.passes_regression_gate(min_floor_coverage=1.01) is False
+    assert quality.passes_regression_gate(min_floor_coverage=0.5) is False
