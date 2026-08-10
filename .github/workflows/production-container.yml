@@ -99,7 +99,7 @@ jobs:
             -e APEX_DEBUG=false \
             -e APEX_CORS_ORIGINS=http://127.0.0.1:8000 \
             apex-vision-ai:${{ github.sha }}
-      - name: Smoke test health and readiness
+      - name: Smoke test health, readiness, diagnostics and frontend
         run: |
           set -e
           trap 'docker logs apex-smoke; docker rm -f apex-smoke' EXIT
@@ -112,6 +112,9 @@ jobs:
           curl --fail --silent http://127.0.0.1:8000/api/health
           curl --fail --silent http://127.0.0.1:8000/api/ready
           curl --fail --silent http://127.0.0.1:8000/api/diagnostics
+          echo "Validating production frontend"
+          curl --fail --silent --header "Accept: text/html" http://127.0.0.1:8000/ -o /tmp/apex-home.html
+          grep -qi "<!doctype html>" /tmp/apex-home.html
           docker inspect --format '{{.State.Status}}' apex-smoke | grep -qx running
       - name: Cleanup
         if: always()
