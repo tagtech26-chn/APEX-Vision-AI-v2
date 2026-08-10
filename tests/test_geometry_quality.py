@@ -17,6 +17,7 @@ def test_valid_floor_geometry_produces_strong_regression_signal() -> None:
     assert quality.homography_valid is True
     assert quality.perspective_score > 0.9
     assert quality.score > 0.8
+    assert quality.passes_regression_gate() is True
 
 
 def test_missing_geometry_is_safe_and_scores_zero() -> None:
@@ -30,6 +31,7 @@ def test_missing_geometry_is_safe_and_scores_zero() -> None:
         "perspective_score": 0.0,
         "score": 0.0,
     }
+    assert quality.passes_regression_gate() is False
 
 
 def test_singular_homography_is_rejected() -> None:
@@ -41,3 +43,13 @@ def test_singular_homography_is_rejected() -> None:
 
     assert quality.homography_valid is False
     assert quality.perspective_score < 0.6
+    assert quality.passes_regression_gate() is False
+
+
+def test_regression_gate_rejects_low_score_or_coverage() -> None:
+    mask = np.ones((100, 100), dtype=np.uint8)
+    polygon = np.array([[0, 0], [99, 0], [99, 99], [0, 99]], dtype=np.float32)
+    quality = evaluate_floor_geometry(mask, polygon, np.eye(3))
+
+    assert quality.passes_regression_gate(min_score=0.99) is False
+    assert quality.passes_regression_gate(min_floor_coverage=1.01) is False
