@@ -49,6 +49,8 @@ jobs:
           APEX_AI_PROVIDER: light
           APEX_DEBUG: "true"
         run: pytest -q tests/test_scene_quality.py
+      - name: Run floor geometry regression gate
+        run: pytest -q tests/test_geometry_quality.py
       - name: Validate material benchmark contract
         run: python scripts/validate_material_benchmark.py --output material-benchmark-summary.json
       - name: Upload benchmark contract report
