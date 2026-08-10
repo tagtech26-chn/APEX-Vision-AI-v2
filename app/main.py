@@ -55,7 +55,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="APEX Vision AI",
-    version="2.1.0",
+    version=settings.app_version,
     description="AI floor detection, room segmentation and tile rendering.",
     lifespan=lifespan,
 )
@@ -105,12 +105,12 @@ app.mount("/output", StaticFiles(directory=str(settings.output_dir)), name="outp
 
 @app.get("/api/health")
 def health():
-    return {"success": True, "status": "ok", "version": "2.1.0"}
+    return {"success": True, "status": "ok", "version": settings.app_version}
 
 
 @app.get("/api/ready")
 def readiness():
-    return {"success": True, "status": "ready", "version": "2.1.0"}
+    return {"success": True, "status": "ready", "version": settings.app_version}
 
 
 if FRONTEND_DIST.is_dir():
@@ -121,4 +121,4 @@ else:
 
     @app.get("/")
     def home():
-        return {"application": "APEX Vision AI", "status": "Running", "version": "2.1.0", "ai_provider": settings.ai_provider}
+        return {"application": "APEX Vision AI", "status": "Running", "version": settings.app_version, "ai_provider": settings.ai_provider}
