@@ -11,6 +11,7 @@ from pathlib import Path
 
 import cv2
 
+from app.ai.quality import SceneQualityEvaluator
 from app.ai.scene.result import SceneResult
 from app.cache.scene_cache import SceneCache
 from app.core.config import settings
@@ -21,6 +22,7 @@ logger = logging.getLogger("apex.render")
 _ANALYZER_LOCK = threading.Lock()
 _TILE_CACHE_LOCK = threading.Lock()
 _TILE_CACHE: OrderedDict[str, object] = OrderedDict()
+_QUALITY_EVALUATOR = SceneQualityEvaluator()
 
 
 class RenderService:
@@ -87,6 +89,15 @@ class RenderService:
         scene_started = time.perf_counter()
         scene = self._load_or_build_scene(room_path, progress_cb=progress_cb)
         render_metrics.stage("scene", time.perf_counter() - scene_started)
+
+        quality_started = time.perf_counter()
+        quality = _QUALITY_EVALUATOR.evaluate(scene)
+        scene.metadata["quality"] = quality
+        render_metrics.stage("quality", time.perf_counter() - quality_started)
+        logger.info(
+            "[AI] Scene quality score=%.2f grade=%s floor_coverage=%.4f depth_valid=%.4f",
+            quality["score"], quality["grade"], quality["floor_coverage"], quality["depth_valid_ratio"],
+        )
 
         tile_started = time.perf_counter()
         tile = self._load_tile(tile_path)
