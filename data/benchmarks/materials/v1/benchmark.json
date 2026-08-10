@@ -1,0 +1,13 @@
+{
+  "dataset": "apex-vision-ai-materials",
+  "version": "1.0.0",
+  "status": "ci-fixture",
+  "purpose": "deterministic regression contract; not a real-world accuracy claim",
+  "records": [
+    {"id": "fixture-ceramic-gloss-001", "image": null, "material": "ceramic", "finish": "gloss", "split": "test", "source": "synthetic-statistical-fixture"},
+    {"id": "fixture-stone-matte-001", "image": null, "material": "stone", "finish": "matte", "split": "test", "source": "synthetic-statistical-fixture"},
+    {"id": "fixture-wood-satin-001", "image": null, "material": "wood", "finish": "satin", "split": "test", "source": "synthetic-statistical-fixture"},
+    {"id": "fixture-vinyl-matte-001", "image": null, "material": "vinyl", "finish": "matte", "split": "test", "source": "synthetic-statistical-fixture"},
+    {"id": "fixture-carpet-matte-001", "image": null, "material": "carpet", "finish": "matte", "split": "test", "source": "synthetic-statistical-fixture"}
+  ]
+}
