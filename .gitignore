@@ -7,6 +7,7 @@ venv/
 env/
 *.pth
 *.npy
+*.egg-info/
 *.scene
 .pytest_cache/
 .coverage
@@ -24,6 +25,7 @@ runs/
 weights/
 models/
 *.pt
+.apex-cache-signing-key
 
 # Env
 .env
