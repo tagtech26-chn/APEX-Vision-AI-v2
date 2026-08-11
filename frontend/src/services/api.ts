@@ -37,6 +37,7 @@ export interface Tile {
 export interface RenderRequest {
     room: number; tile: number; tile_size: number; grout_width: number;
     grout_color: number[]; pattern: string;
+    material_profile?: "auto" | "generic" | "ceramic" | "stone" | "wood" | "vinyl" | "carpet";
 }
 
 export interface Diagnostics {
