@@ -61,6 +61,46 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  heavy-stack-validation:
+    name: Heavy AI dependency and provider validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install heavy runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-prod.txt
+          pip install -r requirements-ai-source.txt
+      - name: Validate heavy imports and provider contract
+        env:
+          APEX_AI_PROVIDER: heavy
+          APEX_DEBUG: "true"
+        run: |
+          python - <<'PY'
+          import importlib
+          import os
+
+          for module in ("torch", "torchvision", "groundingdino", "sam2"):
+              importlib.import_module(module)
+              print(f"import ok: {module}")
+
+          import torch
+          import torchvision
+          from app.ai.config import resolve_provider
+
+          assert torch.__version__.startswith("2.6."), torch.__version__
+          assert torchvision.__version__.startswith("0.21."), torchvision.__version__
+          assert resolve_provider(os.environ["APEX_AI_PROVIDER"]) == "heavy"
+          print(f"torch={torch.__version__}")
+          print(f"torchvision={torchvision.__version__}")
+          print("heavy provider contract ok")
+          PY
+
   frontend-validation:
     name: Frontend lint and build
     runs-on: ubuntu-latest
@@ -85,7 +125,7 @@ jobs:
 
   container:
     name: Production container smoke test
-    needs: [backend-tests, frontend-validation]
+    needs: [backend-tests, heavy-stack-validation, frontend-validation]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
