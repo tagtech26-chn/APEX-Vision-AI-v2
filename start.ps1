@@ -9,8 +9,8 @@
     APEX_AI_PROVIDER=auto or light explicitly when a fallback is required.
 
     A local cache signing key is generated once when one is not supplied.
-    This enables the existing integrity-protected scene cache without
-    committing a machine-specific secret to the repository.
+    The frontend is automatically rebuilt when its source is newer than the
+    current production bundle, preventing stale UI changes from being served.
 
 .PARAMETER Port
     Port to bind. Default 8000.
@@ -69,9 +69,48 @@ if (-not $env:APEX_CACHE_SIGNING_KEY) {
     Write-Host "Scene analysis cache enabled with local signing key." -ForegroundColor DarkGray
 }
 
-$dist = Join-Path $Root "frontend\dist"
-if (-not (Test-Path $dist)) {
-    Write-Warning "frontend\dist not found - the web UI will not be served. Run scripts\setup-windows.ps1 (or 'npm run build' in frontend/) first."
+# Keep the served SPA synchronized with the checked-out source. This avoids
+# the common situation where React source has changed but frontend/dist still
+# contains the previous UI.
+$frontend = Join-Path $Root "frontend"
+$dist = Join-Path $frontend "dist"
+$distIndex = Join-Path $dist "index.html"
+$packageJson = Join-Path $frontend "package.json"
+$packageLock = Join-Path $frontend "package-lock.json"
+$nodeModules = Join-Path $frontend "node_modules"
+
+$needsBuild = -not (Test-Path $distIndex)
+if (-not $needsBuild) {
+    $bundleTime = (Get-Item $distIndex).LastWriteTimeUtc
+    $sourceFiles = Get-ChildItem -Path (Join-Path $frontend "src") -Recurse -File -Include *.ts,*.tsx,*.css,*.html -ErrorAction SilentlyContinue
+    $configFiles = @($packageJson, (Join-Path $frontend "vite.config.ts"), (Join-Path $frontend "tsconfig.json")) | Where-Object { Test-Path $_ }
+    $newestSource = @($sourceFiles + ($configFiles | ForEach-Object { Get-Item $_ })) | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+    if ($newestSource -and $newestSource.LastWriteTimeUtc -gt $bundleTime) {
+        $needsBuild = $true
+    }
+}
+
+if ($needsBuild) {
+    $npm = Get-Command npm -ErrorAction SilentlyContinue
+    if (-not $npm) {
+        Write-Error "Node.js/npm is required to build the frontend. Install Node.js or run 'npm run build' manually in frontend/."
+    }
+    Set-Location $frontend
+    if (-not (Test-Path $nodeModules)) {
+        if (-not (Test-Path $packageLock)) {
+            Write-Error "frontend/package-lock.json is missing; cannot perform a reproducible frontend install."
+        }
+        Write-Host "Installing frontend dependencies..." -ForegroundColor Yellow
+        & $npm.Source ci
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
+    Write-Host "Building latest frontend bundle..." -ForegroundColor Yellow
+    & $npm.Source run build
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    Set-Location $Root
+}
+else {
+    Write-Host "Frontend bundle is current." -ForegroundColor DarkGray
 }
 
 Write-Host "Starting APEX Vision AI on http://$HostAddr`:$Port" -ForegroundColor Green
