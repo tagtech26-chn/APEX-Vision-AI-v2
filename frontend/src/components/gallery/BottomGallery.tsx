@@ -1,29 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-
-import {
-    Alert,
-    Box,
-    CircularProgress,
-    Collapse,
-    IconButton,
-    Paper,
-    Typography,
-} from "@mui/material";
+import { Box, CircularProgress, IconButton, TextField, Typography } from "@mui/material";
+import SearchIcon from "@mui/icons-material/Search";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-
-import SearchBar from "./SearchBar";
-import FilterChips from "./FilterChips";
 import TileGrid from "./TileGrid";
 import { getCategories, getFinishes } from "../../services/api";
 import { useRenderStore } from "../../store/renderStore";
 
 export default function BottomGallery() {
-    const [expanded, setExpanded] = useState(false);
+    const [expanded, setExpanded] = useState(true);
     const [categories, setCategories] = useState<string[]>([]);
     const [finishes, setFinishes] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
 
     const search = useRenderStore((s) => s.search);
     const category = useRenderStore((s) => s.category);
@@ -33,14 +21,12 @@ export default function BottomGallery() {
     const setFinish = useRenderStore((s) => s.setFinish);
 
     const loadFilters = useCallback(async () => {
-        setLoading(true);
-        setError(null);
         try {
             const [cats, fins] = await Promise.all([getCategories(), getFinishes()]);
             setCategories(cats);
             setFinishes(fins);
-        } catch {
-            setError("Unable to load catalog filters. Please retry.");
+        } catch (error) {
+            console.error("Catalog filters unavailable", error);
         } finally {
             setLoading(false);
         }
@@ -48,27 +34,30 @@ export default function BottomGallery() {
 
     useEffect(() => { void loadFilters(); }, [loadFilters]);
 
-    return (
-        <Paper elevation={12} sx={{ position: "absolute", left: 0, right: 0, bottom: 0, height: expanded ? { xs: 430, sm: 470 } : 58, transition: "height .30s ease", borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: "hidden", bgcolor: "#fafafa", zIndex: 1099 }}>
-            <Box sx={{ height: 58, px: { xs: 1, sm: 2 }, display: "flex", alignItems: "center", borderBottom: "1px solid #ececec", backgroundColor: "#fafafa" }}>
-                <IconButton size="small" onClick={() => setExpanded(!expanded)} sx={{ mr: 1 }}>
-                    {expanded ? <ExpandMoreIcon /> : <ExpandLessIcon />}
-                </IconButton>
-                <Typography variant="h6" sx={{ fontWeight: 700, fontSize: { xs: "1rem", sm: "1.25rem" } }}>Tile Gallery</Typography>
-                {loading && <CircularProgress size={18} sx={{ ml: 2 }} />}
-            </Box>
+    const chips = ["All", ...categories].filter((value, index, list) => list.indexOf(value) === index).slice(0, 9);
 
-            <Collapse in={expanded} timeout={250}>
-                <Box sx={{ maxHeight: { xs: 372, sm: 412 }, overflowY: "auto" }}>
-                    {error && <Alert severity="error" sx={{ m: 2 }} onClose={() => setError(null)} action={<button onClick={() => void loadFilters()}>Retry</button>}>{error}</Alert>}
-                    <Box sx={{ p: 2 }}><SearchBar value={search} onChange={setSearch} /></Box>
-                    <Box sx={{ px: 2 }}>
-                        <FilterChips title="Category" items={categories} selected={category} onSelect={setCategory} />
-                        <FilterChips title="Finish" items={finishes} selected={finish} onSelect={setFinish} />
-                    </Box>
-                    <Box sx={{ px: 1, pb: 1 }}><TileGrid onSelectTile={() => setExpanded(false)} /></Box>
+    return (
+        <Box sx={{ position: "absolute", left: { xs: 0, md: 212 }, right: { xs: 0, md: 0 }, bottom: 0, height: expanded ? 274 : 54, transition: "height .25s ease", bgcolor: "#0b1118", borderTop: "1px solid #202b38", zIndex: 1200, overflow: "hidden", boxShadow: "0 -12px 30px rgba(0,0,0,.28)" }}>
+            <Box sx={{ height: 54, display: "flex", alignItems: "center", gap: 1.5, px: 2, borderBottom: "1px solid #1c2733" }}>
+                <IconButton size="small" onClick={() => setExpanded((v) => !v)} sx={{ color: "#aab5c2" }}>{expanded ? <ExpandMoreIcon /> : <ExpandLessIcon />}</IconButton>
+                <Typography sx={{ color: "#f4f6fa", fontSize: 15, fontWeight: 800 }}>Material Catalog</Typography>
+                <Box sx={{ display: "flex", gap: .75, ml: 1, overflow: "hidden" }}>
+                    {chips.map((item) => {
+                        const selected = item === "All" ? category === "" : category === item;
+                        return <Box key={item} component="button" onClick={() => setCategory(item === "All" ? "" : item)} sx={{ border: 0, borderRadius: 1, px: 1.25, py: .55, bgcolor: selected ? "#6840e8" : "#141d27", color: selected ? "#fff" : "#a4afbc", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}>{item}</Box>;
+                    })}
                 </Box>
-            </Collapse>
-        </Paper>
+                <Box sx={{ ml: "auto", width: { xs: 180, sm: 250 }, display: "flex", alignItems: "center", gap: .5 }}>
+                    <SearchIcon sx={{ color: "#687686", fontSize: 19 }} />
+                    <TextField value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search materials..." variant="standard" fullWidth InputProps={{ disableUnderline: true }} sx={{ "& input": { color: "#dbe2ea", fontSize: 12 }, "& input::placeholder": { color: "#697789", opacity: 1 } }} />
+                </Box>
+            </Box>
+            {expanded && <Box sx={{ height: 220, overflow: "hidden", px: 1, pt: 1 }}>
+                <Box sx={{ display: "flex", gap: .75, px: 1, mb: 1, overflowX: "auto" }}>
+                    {finishes.slice(0, 7).map((item) => <Box key={item} component="button" onClick={() => setFinish(finish === item ? "" : item)} sx={{ border: "1px solid", borderColor: finish === item ? "#6840e8" : "#25313e", borderRadius: 1, px: 1, py: .4, bgcolor: finish === item ? "rgba(104,64,232,.18)" : "transparent", color: finish === item ? "#bdaeff" : "#7f8b99", fontSize: 10, cursor: "pointer", whiteSpace: "nowrap" }}>{item}</Box>)}
+                </Box>
+                {loading ? <Box sx={{ display: "flex", justifyContent: "center", pt: 5 }}><CircularProgress size={22} /></Box> : <TileGrid onSelectTile={() => undefined} />}
+            </Box>}
+        </Box>
     );
 }
