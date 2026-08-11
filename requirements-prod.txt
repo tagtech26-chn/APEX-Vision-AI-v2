@@ -28,8 +28,10 @@ pillow==12.3.0
 scipy==1.17.1
 
 # --- AI / ML core ---
-torch==2.13.0
-torchvision==0.28.0
+# PyTorch and torchvision must be a matched release pair. PyTorch's official
+# compatibility matrix lists 2.6.0 with torchvision 0.21.0.
+torch==2.6.0
+torchvision==0.21.0
 transformers==4.39.3
 safetensors==0.8.0
 sentencepiece==0.2.2
