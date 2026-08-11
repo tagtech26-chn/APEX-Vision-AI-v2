@@ -85,6 +85,10 @@ export default function RoomSelectionDialog() {
 
     async function chooseRoom(room: Room) {
 
+        // A Heavy AI job is CPU-intensive; never enqueue a second room render
+        // while the current one is still running.
+        if (loading) return;
+
         try {
 
             setLoading(true);
@@ -207,7 +211,9 @@ export default function RoomSelectionDialog() {
 
                             sx={{
 
-                                cursor: "pointer",
+                                cursor: loading ? "wait" : "pointer",
+
+                                pointerEvents: loading ? "none" : "auto",
 
                                 borderRadius: 3,
 
@@ -217,7 +223,7 @@ export default function RoomSelectionDialog() {
 
                                 "&:hover": {
 
-                                    transform: "translateY(-5px)",
+                                    transform: loading ? "none" : "translateY(-5px)",
 
                                     boxShadow: 8,
 
