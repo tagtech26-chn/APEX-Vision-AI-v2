@@ -116,7 +116,7 @@ def health():
 
 @app.get("/api/ready")
 def readiness():
-    if settings.ai_provider in {"heavy", "auto"}:
+    if settings.ai_provider == "heavy":
         available, missing = heavy_models_available()
         if not available:
             return JSONResponse(
@@ -129,17 +129,18 @@ def readiness():
                     "missing": missing,
                 },
             )
-        if not _WARMUP_READY.is_set():
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "success": False,
-                    "status": "warming_up",
-                    "version": settings.app_version,
-                    "ai_provider": settings.ai_provider,
-                    "error": _WARMUP_ERROR,
-                },
-            )
+
+    if settings.ai_provider in {"heavy", "auto"} and not _WARMUP_READY.is_set():
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "status": "warming_up" if _WARMUP_ERROR is None else "not_ready",
+                "version": settings.app_version,
+                "ai_provider": settings.ai_provider,
+                "error": _WARMUP_ERROR,
+            },
+        )
 
     return {
         "success": True,
