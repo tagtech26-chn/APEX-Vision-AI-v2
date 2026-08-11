@@ -65,7 +65,8 @@ export default function App() {
     getDiagnostics().then((diagnostics) => {
       if (!active) return;
       const names = Object.values(diagnostics.ai.providers).join(" + ");
-      setProviderLabel(diagnostics.ai.analyzer_loaded && names ? `Heavy AI · ${names}` : "Heavy AI · warming");
+      const configured = diagnostics.ai.configured_provider === "light" ? "Light AI" : "Heavy AI";
+      setProviderLabel(diagnostics.ai.analyzer_loaded && names ? `${configured} · ${names}` : `${configured} · warming`);
     }).catch(() => active && setProviderLabel("Heavy AI · unavailable"));
     return () => { active = false; };
   }, []);
@@ -82,6 +83,7 @@ export default function App() {
         grout_width: groutWidth,
         grout_color: [220, 220, 220],
         pattern,
+        material_profile: "auto",
       }, (current) => {
         setProgress(current.progress);
         setProgressMessage(current.message || "Heavy AI rendering...");
