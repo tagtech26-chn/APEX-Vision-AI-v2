@@ -17,15 +17,12 @@ def diagnostics():
     analyzer_loaded = services.render.analyzer is not None
     providers = {}
     if analyzer_loaded:
-        providers = {
-            name: type(provider).__name__
-            for name, provider in services.render.get_analyzer().providers.items()
-        }
+        providers = services.render.get_analyzer().providers
 
     return {
         "success": True,
         "application": "APEX Vision AI",
-        "version": "2.1.0",
+        "version": settings.app_version,
         "ai": {
             "configured_provider": settings.ai_provider,
             "analyzer_loaded": analyzer_loaded,
