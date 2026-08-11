@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Box, Card, CardActionArea, CardContent, CardMedia, CircularProgress, Typography } from "@mui/material";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Box, Card, CardActionArea, CardContent, CircularProgress, Typography } from "@mui/material";
 import { getTiles, submitAndWaitRender } from "../../services/api";
 import type { Tile } from "../../services/api";
 import { useRenderStore } from "../../store/renderStore";
@@ -8,6 +8,7 @@ import { API } from "../../config";
 export default function TileGrid({ onSelectTile }: { onSelectTile?: () => void }) {
     const [tiles, setTiles] = useState<Tile[]>([]);
     const [loading, setLoading] = useState(true);
+    const initialRenderSkipped = useRef(false);
 
     const selectedTile = useRenderStore((s) => s.tile);
     const search = useRenderStore((s) => s.search);
@@ -18,6 +19,7 @@ export default function TileGrid({ onSelectTile }: { onSelectTile?: () => void }
     const groutColor = useRenderStore((s) => s.groutColor);
     const pattern = useRenderStore((s) => s.pattern);
     const renderNonce = useRenderStore((s) => s.renderNonce);
+    const rendering = useRenderStore((s) => s.loading);
     const setTile = useRenderStore((s) => s.setTile);
     const setImage = useRenderStore((s) => s.setImage);
     const setLoadingState = useRenderStore((s) => s.setLoading);
@@ -34,6 +36,7 @@ export default function TileGrid({ onSelectTile }: { onSelectTile?: () => void }
         try {
             setLoadingState(true);
             setProgress(0);
+            setProgressMessage("Queued for Heavy AI rendering...");
             const response = await submitAndWaitRender({
                 room: useRenderStore.getState().room,
                 tile: tile.id,
@@ -41,6 +44,7 @@ export default function TileGrid({ onSelectTile }: { onSelectTile?: () => void }
                 grout_width: groutWidth,
                 grout_color: groutColor,
                 pattern,
+                material_profile: "auto",
             }, (j) => {
                 setProgress(j.progress ?? 0);
                 setProgressMessage(j.message || j.status);
@@ -50,6 +54,7 @@ export default function TileGrid({ onSelectTile }: { onSelectTile?: () => void }
             }
         } catch (err) {
             console.error(err);
+            setProgressMessage(err instanceof Error ? err.message : "Render failed");
         } finally {
             setLoadingState(false);
         }
@@ -57,9 +62,18 @@ export default function TileGrid({ onSelectTile }: { onSelectTile?: () => void }
 
     useEffect(() => {
         if (tiles.length === 0) return;
+
+        // The app already has an initial scene/output. Do not launch a Heavy AI
+        // inference merely because the catalog mounted. A render is started by
+        // an explicit tile selection or by another explicit render action.
+        if (!initialRenderSkipped.current) {
+            initialRenderSkipped.current = true;
+            return;
+        }
+
         const tile = tiles.find((t) => t.id === selectedTile);
-        if (tile) void renderTile(tile);
-    }, [selectedTile, tiles, renderTile, renderNonce]);
+        if (tile && !rendering) void renderTile(tile);
+    }, [selectedTile, tiles, renderTile, renderNonce, rendering]);
 
     const filteredTiles = useMemo(() => tiles.filter((tile) => {
         const matchesSearch = search === "" || tile.name.toLowerCase().includes(search.toLowerCase());
@@ -69,6 +83,7 @@ export default function TileGrid({ onSelectTile }: { onSelectTile?: () => void }
     }), [tiles, search, category, finish]);
 
     function selectTile(tile: Tile) {
+        if (rendering) return;
         setTile(tile.id);
         onSelectTile?.();
     }
@@ -78,8 +93,8 @@ export default function TileGrid({ onSelectTile }: { onSelectTile?: () => void }
     return (
         <Box sx={{ display: "flex", gap: 1.5, overflowX: "auto", px: 1, pb: 1.5, scrollbarWidth: "thin" }}>
             {filteredTiles.map((tile) => (
-                <Card key={tile.id} elevation={0} sx={{ minWidth: 138, maxWidth: 160, flexShrink: 0, cursor: "pointer", bgcolor: "#111923", border: selectedTile === tile.id ? "2px solid #7447ff" : "1px solid #263241", borderRadius: 1.5, overflow: "hidden", transition: ".2s", "&:hover": { transform: "translateY(-3px)", borderColor: "#7447ff" } }}>
-                    <CardActionArea onClick={() => selectTile(tile)}>
+                <Card key={tile.id} elevation={0} sx={{ minWidth: 138, maxWidth: 160, flexShrink: 0, cursor: rendering ? "wait" : "pointer", bgcolor: "#111923", border: selectedTile === tile.id ? "2px solid #7447ff" : "1px solid #263241", borderRadius: 1.5, overflow: "hidden", transition: ".2s", "&:hover": { transform: rendering ? "none" : "translateY(-3px)", borderColor: "#7447ff" } }}>
+                    <CardActionArea disabled={rendering} onClick={() => selectTile(tile)}>
                         <CardMedia component="img" height="92" image={`${API}${tile.thumbnail}`} alt={tile.name} sx={{ objectFit: "cover" }} onError={(e) => { (e.target as HTMLImageElement).src = "https://placehold.co/180x120?text=Tile"; }} />
                         <CardContent sx={{ p: 1.25, "&:last-child": { pb: 1.25 } }}>
                             <Typography sx={{ fontWeight: 700, color: "#f5f7fb", fontSize: 12 }} noWrap>{tile.name}</Typography>
