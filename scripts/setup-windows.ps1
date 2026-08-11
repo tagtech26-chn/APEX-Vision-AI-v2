@@ -88,8 +88,8 @@ Step "Upgrade pip"
 if ($LASTEXITCODE -ne 0) { Fail "pip upgrade failed" }
 
 if ($CpuOnly) {
-    Step "Install CPU-only torch (PyTorch CPU index)"
-    & $Python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.13.0" "torchvision==0.28.0"
+    Step "Install CPU-only torch 2.6.0 + torchvision 0.21.0 (matched pair)"
+    & $Python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.6.0" "torchvision==0.21.0"
     if ($LASTEXITCODE -ne 0) { Fail "CPU torch install failed" }
 }
 
