@@ -60,7 +60,9 @@ class Settings:
     catalog_dir: Path = field(default_factory=Path)
     scenes_dir: Path = field(default_factory=Path)
 
-    ai_provider: str = field(default_factory=lambda: _env("APEX_AI_PROVIDER", "auto").lower())
+    # Heavy AI is the production default. Light mode remains available only
+    # when explicitly requested with APEX_AI_PROVIDER=light.
+    ai_provider: str = field(default_factory=lambda: _env("APEX_AI_PROVIDER", "heavy").lower())
 
     # Production network/security controls.
     allowed_hosts: tuple[str, ...] = field(
