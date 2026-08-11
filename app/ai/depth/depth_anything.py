@@ -13,7 +13,7 @@ from app.core.config import settings
 
 
 class DepthAnythingProvider(DepthEstimator):
-    """DepthAnythingV2 metric-estimation provider."""
+    """DepthAnythingV2 metric-estimation provider with explicit device selection."""
 
     name = "depth_anything_v2"
 
@@ -38,14 +38,31 @@ class DepthAnythingProvider(DepthEstimator):
         import torch
         from depth_anything_v2.dpt import DepthAnythingV2
 
+        self.device = self._resolve_device(torch)
         self.model = DepthAnythingV2(encoder="vitl")
 
+        # Load weights on CPU first to avoid unnecessary peak GPU memory during
+        # startup, then move the fully-loaded model to the configured device.
         state = torch.load(self.checkpoint_path, map_location="cpu")
         self.model.load_state_dict(state)
-        self.model.to("cpu")
+        self.model.to(self.device)
         self.model.eval()
 
         self._torch_no_grad = torch.no_grad()
+
+    @staticmethod
+    def _resolve_device(torch) -> str:
+        """Resolve the shared APEX AI device policy and fail fast for forced CUDA."""
+        requested = settings.ai_device
+        if requested == "cpu":
+            return "cpu"
+        if requested == "cuda":
+            if not torch.cuda.is_available():
+                raise RuntimeError(
+                    "APEX_AI_DEVICE=cuda was requested but CUDA is unavailable"
+                )
+            return "cuda"
+        return "cuda" if torch.cuda.is_available() else "cpu"
 
     def predict(self, image: np.ndarray) -> np.ndarray:
         rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
