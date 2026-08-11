@@ -39,12 +39,26 @@ export interface RenderRequest {
     grout_color: number[]; pattern: string;
 }
 
+export interface Diagnostics {
+    success: boolean;
+    application: string;
+    version: string;
+    ai: {
+        configured_provider: string;
+        analyzer_loaded: boolean;
+        providers: Record<string, string>;
+    };
+    cache: { enabled: boolean; signing_key_configured: boolean };
+    render: Record<string, unknown>;
+}
+
 export async function getRooms(): Promise<Room[]> { return getWithRetry<Room[]>("/api/rooms"); }
 export async function getCategories(): Promise<string[]> { return getWithRetry<string[]>("/api/catalog/categories"); }
 export async function getFinishes(): Promise<string[]> { return getWithRetry<string[]>("/api/catalog/finishes"); }
 export async function getSizes(): Promise<string[]> { return getWithRetry<string[]>("/api/catalog/sizes"); }
 export async function getSeries(): Promise<string[]> { return getWithRetry<string[]>("/api/catalog/series"); }
 export async function getTiles(): Promise<Tile[]> { return getWithRetry<Tile[]>("/api/catalog/tiles"); }
+export async function getDiagnostics(): Promise<Diagnostics> { return getWithRetry<Diagnostics>("/api/diagnostics"); }
 
 export interface RenderJob {
     job_id: string;
