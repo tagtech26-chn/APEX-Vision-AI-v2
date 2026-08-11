@@ -13,9 +13,9 @@ numpy>=2.4.6,<3.0
 pillow>=12.3.0,<13.0
 
 # AI / ML
-# Heavy model assets are configured at runtime through environment variables.
-torch>=2.13.0,<3.0
-torchvision>=0.28.0,<1.0
+# Keep the PyTorch pair aligned; 2.6.x is the validated production baseline.
+torch>=2.6.0,<2.7.0
+torchvision>=0.21.0,<0.22.0
 transformers>=4.39.3,<5.0
 segment-anything>=1.0,<2.0
 supervision>=0.29.1,<1.0
