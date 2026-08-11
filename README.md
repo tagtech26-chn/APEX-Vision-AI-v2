@@ -8,9 +8,9 @@ stack, and a fully working React frontend.
 
 - **Scene analysis** — detects the floor, segments it, estimates depth, fits the
   floor plane and extracts a homography so tiles can be projected in perspective.
-- **AI provider pattern** — choose between the heavy models
-  (GroundingDINO + SAM2 + DepthAnythingV2) and a lightweight OpenCV heuristic
-  stack. `auto` picks whichever is available and falls back gracefully.
+- **AI provider pattern** — production defaults to the heavy models
+  (GroundingDINO + SAM2 + DepthAnythingV2). `auto` may be selected explicitly to
+  allow a heuristic fallback; `light` is available for development only.
 - **Tile rendering** — grout, straight / brick / herringbone / chevron patterns,
   material enhancement, room lighting, LAB colour matching and shadow
   preservation.
@@ -73,9 +73,17 @@ npm run dev      # http://localhost:5173
 
 | Setting (`APEX_AI_PROVIDER`) | Behaviour                                            |
 | ---------------------------- | ---------------------------------------------------- |
-| `auto` (default)             | Use the heavy stack when importable, else heuristics |
-| `heavy`                      | Force GroundingDINO + SAM2 + DepthAnythingV2         |
+| `heavy` (default)            | Force GroundingDINO + SAM2 + DepthAnythingV2         |
+| `auto`                       | Use heavy when fully ready, else heuristics           |
 | `light`                      | Force the pure-OpenCV heuristic stack                |
+
+`APEX_AI_DEVICE` controls heavy-model execution:
+
+| Setting | Behaviour |
+| --- | --- |
+| `auto` (default) | CUDA when available, otherwise CPU |
+| `cuda` | Require CUDA; fail fast if unavailable |
+| `cpu` | Run heavy models on CPU |
 
 Model paths are configurable via environment variables:
 
@@ -83,11 +91,9 @@ Model paths are configurable via environment variables:
 - `SAM2_CONFIG_DIR`, `SAM2_CONFIG_FILE`, `SAM2_CKPT`
 - `DEPTH_ANYTHING_ROOT`, `DEPTH_ANYTHING_CKPT`
 
-Defaults point at `D:\Projects\GroundingDINO`, `D:\Projects\sam2` and
-`D:\Projects\Depth-Anything-V2`. The heavy dependencies
-(`groundingdino`, `sam2`, `depth_anything_v2`) are installed from those source
-repositories and are **not** required — the app runs fully on the heuristic
-stack if they are missing.
+The heavy readiness check validates dependencies, configuration files, source
+repositories and all three checkpoints before the production provider is
+selected.
 
 ## Production deployment
 
@@ -105,7 +111,8 @@ UI). Point `APEX_FRONTEND_DIST` elsewhere to override the build location.
 ```
 
 The heavy pipeline also needs the Depth-Anything-V2 source clone and all model
-checkpoints — see the env vars above. To run without them, set
+checkpoints. To intentionally use the heuristic fallback, set
+`APEX_AI_PROVIDER=auto`; to force the lightweight path, set
 `APEX_AI_PROVIDER=light`.
 
 ### 2. Build the frontend
@@ -124,8 +131,13 @@ To point it at a different host, build with `VITE_API_BASE` set, e.g.
 ### 3. Run
 
 ```powershell
-.venv\Scripts\python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+.\start.ps1
 ```
+
+`start.ps1` explicitly selects `APEX_AI_PROVIDER=heavy` and
+`APEX_AI_DEVICE=auto` when those variables are not already set. The service
+loads the heavy models once and exposes `/api/ready` as the production
+readiness probe.
 
 Open http://your-host:8000 — the web UI and `/api/*` endpoints are live.
 
@@ -170,11 +182,11 @@ Start and test:
 
 Notes:
 
-- The AI provider defaults to `auto`: the heavy stack is used when the models
-  load, otherwise the OpenCV heuristic pipeline. Force one with
-  `$env:APEX_AI_PROVIDER = "heavy"` (or `"light"`) before `start.ps1`.
-- `-CpuOnly` installs the CPU torch build (~200 MB vs ~2.5 GB); the app runs on
-  CPU regardless, so it is the recommended default on machines without a GPU.
+- The production provider defaults to `heavy`. `auto` uses heavy only when the
+  complete stack is ready and otherwise falls back to OpenCV; force one with
+  `$env:APEX_AI_PROVIDER = "heavy"`, `"auto"`, or `"light"` before `start.ps1`.
+- `-CpuOnly` installs the CPU torch build; heavy AI still runs on CPU when CUDA
+  is unavailable, but GPU is recommended for practical render times.
 - `-SkipFrontend` skips the npm build; `-SkipModels` skips the weight download
   when `-Heavy` is given (run `.\scripts\download-heavy-models.ps1` later).
 - Sanity-check the install with the test suite:
@@ -183,12 +195,14 @@ Notes:
 
 ## Other settings
 
-| Variable                     | Default            | Purpose                              |
-| ---------------------------- | ------------------ | ------------------------------------ |
-| `APEX_HOST` / `APEX_PORT`    | `0.0.0.0` / `8000` | Server bind address                  |
-| `APEX_DEBUG`                 | `false`            | Verbose logging                      |
-| `APEX_WRITE_DEBUG`           | `false`            | Write debug images during rendering  |
-| `APEX_ASSETS` / `APEX_OUTPUT`| `assets/` `output/`| Data directories                     |
-| `APEX_TILE_MM` / `APEX_GROUT`| `600` / `2`        | Default render values                |
-| `APEX_CORS_ORIGINS`          | dev origins only   | Extra comma-separated CORS origins   |
-| `APEX_FRONTEND_DIST`         | `frontend/dist`    | Built SPA location (served at `/`)   |
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `APEX_HOST` / `APEX_PORT` | `0.0.0.0` / `8000` | Server bind address |
+| `APEX_DEBUG` | `false` | Verbose logging |
+| `APEX_WRITE_DEBUG` | `false` | Write debug images during rendering |
+| `APEX_AI_PROVIDER` | `heavy` | AI provider selection |
+| `APEX_AI_DEVICE` | `auto` | Heavy-model device selection |
+| `APEX_ASSETS` / `APEX_OUTPUT` | `assets/` / `output/` | Data directories |
+| `APEX_TILE_MM` / `APEX_GROUT` | `600` / `2` | Default render values |
+| `APEX_CORS_ORIGINS` | dev origins only | Extra comma-separated CORS origins |
+| `APEX_FRONTEND_DIST` | `frontend/dist` | Built SPA location (served at `/`) |
