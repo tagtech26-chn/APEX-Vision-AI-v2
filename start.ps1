@@ -5,9 +5,8 @@
 .DESCRIPTION
     Loads models.env (heavy model paths, created by setup-windows.ps1 /
     download-heavy-models.ps1) if present, then runs uvicorn with a single
-    worker. The AI provider defaults to 'auto' (heavy when the models load,
-    otherwise the OpenCV heuristic pipeline). Override with e.g.
-    $env:APEX_AI_PROVIDER = "heavy" or "light" before running.
+    worker. Production defaults to the Heavy AI provider. Set
+    APEX_AI_PROVIDER=auto or light explicitly when a fallback is required.
 
 .PARAMETER Port
     Port to bind. Default 8000.
@@ -36,7 +35,12 @@ if (Test-Path $envFile) {
 }
 
 if (-not $env:APEX_AI_PROVIDER) {
-    Write-Host "APEX_AI_PROVIDER unset - using 'auto' (heavy when models load, else light)." -ForegroundColor DarkGray
+    $env:APEX_AI_PROVIDER = "heavy"
+    Write-Host "APEX_AI_PROVIDER unset - using production Heavy AI." -ForegroundColor DarkGray
+}
+if (-not $env:APEX_AI_DEVICE) {
+    $env:APEX_AI_DEVICE = "auto"
+    Write-Host "APEX_AI_DEVICE unset - selecting CUDA when available, otherwise CPU." -ForegroundColor DarkGray
 }
 
 $dist = Join-Path $Root "frontend\dist"
@@ -45,5 +49,6 @@ if (-not (Test-Path $dist)) {
 }
 
 Write-Host "Starting APEX Vision AI on http://$HostAddr`:$Port" -ForegroundColor Green
+Write-Host "AI Provider: $env:APEX_AI_PROVIDER | Device: $env:APEX_AI_DEVICE" -ForegroundColor Cyan
 Set-Location $Root
 & $Python -m uvicorn app.main:app --host $HostAddr --port $Port --workers 1
