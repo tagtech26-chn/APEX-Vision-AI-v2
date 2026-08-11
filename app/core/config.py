@@ -63,6 +63,7 @@ class Settings:
     # Heavy AI is the production default. Light mode remains available only
     # when explicitly requested with APEX_AI_PROVIDER=light.
     ai_provider: str = field(default_factory=lambda: _env("APEX_AI_PROVIDER", "heavy").lower())
+    ai_device: str = field(default_factory=lambda: _env("APEX_AI_DEVICE", "auto").lower())
 
     # Production network/security controls.
     allowed_hosts: tuple[str, ...] = field(
@@ -107,6 +108,8 @@ class Settings:
             raise ValueError("APEX_VERSION must not be empty")
         if self.ai_provider not in {"auto", "heavy", "light"}:
             raise ValueError("APEX_AI_PROVIDER must be one of: auto, heavy, light")
+        if self.ai_device not in {"auto", "cpu", "cuda"}:
+            raise ValueError("APEX_AI_DEVICE must be one of: auto, cpu, cuda")
         if not self.allowed_hosts:
             raise ValueError("APEX_ALLOWED_HOSTS must contain at least one host")
         if not 0.0 <= self.render_alpha <= 1.0:
