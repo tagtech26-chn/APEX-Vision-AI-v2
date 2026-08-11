@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Card, CardActionArea, CardContent, CircularProgress, Typography } from "@mui/material";
+import { Box, Card, CardActionArea, CardContent, CardMedia, CircularProgress, Typography } from "@mui/material";
 import { getTiles, submitAndWaitRender } from "../../services/api";
 import type { Tile } from "../../services/api";
 import { useRenderStore } from "../../store/renderStore";
@@ -72,8 +72,8 @@ export default function TileGrid({ onSelectTile }: { onSelectTile?: () => void }
         }
 
         const tile = tiles.find((t) => t.id === selectedTile);
-        if (tile && !rendering) void renderTile(tile);
-    }, [selectedTile, tiles, renderTile, renderNonce, rendering]);
+        if (tile && !useRenderStore.getState().loading) void renderTile(tile);
+    }, [selectedTile, tiles, renderTile, renderNonce]);
 
     const filteredTiles = useMemo(() => tiles.filter((tile) => {
         const matchesSearch = search === "" || tile.name.toLowerCase().includes(search.toLowerCase());
