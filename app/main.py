@@ -14,6 +14,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.ai.config import heavy_models_available
 from app.api.routes.catalog import router as catalog_router
 from app.api.routes.diagnostics import router as diagnostics_router
 from app.api.routes.render import router as render_router
@@ -24,6 +25,8 @@ from app.core.logging_config import configure_logging
 configure_logging()
 logger = logging.getLogger("apex")
 FRONTEND_DIST = Path(os.getenv("APEX_FRONTEND_DIST", "") or (settings.project_root / "frontend" / "dist"))
+_WARMUP_READY = threading.Event()
+_WARMUP_ERROR: str | None = None
 
 
 def _cors_origins() -> list[str]:
@@ -37,13 +40,18 @@ def _cors_origins() -> list[str]:
 
 
 def _warm_models() -> None:
+    global _WARMUP_ERROR
     if settings.ai_provider not in {"heavy", "auto"}:
+        _WARMUP_READY.set()
         return
     try:
         from app.api.deps import services
+
         services.render.get_analyzer()
+        _WARMUP_READY.set()
         logger.info("AI models warmed up")
-    except Exception:
+    except Exception as exc:
+        _WARMUP_ERROR = str(exc)
         logger.exception("AI model warm-up failed")
 
 
@@ -80,8 +88,6 @@ async def security_and_exception_middleware(request: Request, call_next):
         logger.exception("Unhandled request failure: %s %s", request.method, request.url.path)
         return JSONResponse(status_code=500, content={"success": False, "error": "Internal server error"})
 
-    # Baseline response hardening. HSTS is opt-in because TLS termination is
-    # normally handled by the reverse proxy/load balancer in production.
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -110,7 +116,37 @@ def health():
 
 @app.get("/api/ready")
 def readiness():
-    return {"success": True, "status": "ready", "version": settings.app_version}
+    if settings.ai_provider in {"heavy", "auto"}:
+        available, missing = heavy_models_available()
+        if not available:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "success": False,
+                    "status": "not_ready",
+                    "version": settings.app_version,
+                    "ai_provider": settings.ai_provider,
+                    "missing": missing,
+                },
+            )
+        if not _WARMUP_READY.is_set():
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "success": False,
+                    "status": "warming_up",
+                    "version": settings.app_version,
+                    "ai_provider": settings.ai_provider,
+                    "error": _WARMUP_ERROR,
+                },
+            )
+
+    return {
+        "success": True,
+        "status": "ready",
+        "version": settings.app_version,
+        "ai_provider": settings.ai_provider,
+    }
 
 
 if FRONTEND_DIST.is_dir():
