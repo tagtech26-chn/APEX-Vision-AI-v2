@@ -41,10 +41,11 @@ if ($readyResponse.StatusCode -ne 200 -or $readyBody.status -ne "ready") {
 Write-Host "[PASS] /api/ready provider=$($readyBody.ai_provider)" -ForegroundColor Green
 
 $diagnostics = Get-Json "$BaseUrl/api/diagnostics"
-if ($diagnostics.ai.configured_provider -ne $health.ai_provider -and $null -ne $health.ai_provider) {
-    throw "Provider mismatch between health and diagnostics."
+if ($diagnostics.success -ne $true) { throw "Diagnostics endpoint did not report success." }
+if ($diagnostics.ai.configured_provider -ne $readyBody.ai_provider) {
+    throw "Provider mismatch between readiness and diagnostics."
 }
-Write-Host "[PASS] /api/diagnostics" -ForegroundColor Green
+Write-Host "[PASS] /api/diagnostics provider=$($diagnostics.ai.configured_provider)" -ForegroundColor Green
 
 $rooms = Get-Json "$BaseUrl/api/rooms"
 $catalog = Get-Json "$BaseUrl/api/catalog/tiles"
