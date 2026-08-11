@@ -26,11 +26,12 @@ class SAM2Provider(Segmenter):
         self.config_file = config_file or settings.sam2_config_file
         self.checkpoint_path = checkpoint_path or settings.sam2_ckpt
 
-        config_path = Path(self.config_dir) / self.config_file
-        if not config_path.exists():
+        config_path = Path(self.config_dir).expanduser() / self.config_file
+        checkpoint = Path(self.checkpoint_path).expanduser()
+        if not config_path.is_file():
             raise FileNotFoundError(f"SAM2 config not found: {config_path}")
-        if not Path(self.checkpoint_path).exists():
-            raise FileNotFoundError(f"SAM2 checkpoint not found: {self.checkpoint_path}")
+        if not checkpoint.is_file():
+            raise FileNotFoundError(f"SAM2 checkpoint not found: {checkpoint}")
 
         from hydra.core.global_hydra import GlobalHydra
         from hydra import initialize_config_dir
@@ -40,19 +41,38 @@ class SAM2Provider(Segmenter):
 
         initialize_config_dir(
             version_base=None,
-            config_dir=self.config_dir,
+            config_dir=str(Path(self.config_dir).expanduser().resolve()),
         )
 
         from sam2.build_sam import build_sam2
         from sam2.sam2_image_predictor import SAM2ImagePredictor
 
+        self.device = self._resolve_device()
         self.model = build_sam2(
             config_file=self.config_file,
-            ckpt_path=self.checkpoint_path,
-            device="cpu",
+            ckpt_path=str(checkpoint),
+            device=self.device,
             mode="eval",
         )
         self.predictor = SAM2ImagePredictor(self.model)
+
+    @staticmethod
+    def _resolve_device() -> str:
+        requested = settings.ai_device
+        if requested == "cuda":
+            import torch
+
+            if not torch.cuda.is_available():
+                raise RuntimeError("APEX_AI_DEVICE=cuda was requested but CUDA is unavailable")
+            return "cuda"
+        if requested == "cpu":
+            return "cpu"
+        try:
+            import torch
+
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        except Exception:
+            return "cpu"
 
     def segment(
         self,
