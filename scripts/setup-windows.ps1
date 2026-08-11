@@ -53,21 +53,20 @@ Write-Host "APEX Vision AI - Windows installer" -ForegroundColor Green
 Write-Host "Repo root: $Root"
 
 Step "Preflight"
-if (-not (Test-Exe "python")) { Fail "Python not found on PATH. Install Python 3.11 from https://www.python.org/downloads/ and tick 'Add python.exe to PATH'." }
+if (-not (Test-Exe "python")) { Fail "Python not found on PATH. Install Python 3.11 and tick 'Add python.exe to PATH'." }
 $pyVer = (python --version 2>&1).ToString()
 Write-Host "  python: $pyVer"
 $pyNum = [version]($pyVer -replace "[^0-9.]", "")
 if ($pyNum -lt [version]"3.10") { Fail "Python 3.10+ required (recommended: 3.11). Found: $pyVer" }
 
 if ($Heavy) {
-    if (-not (Test-Exe "git")) { Fail "-Heavy needs git on PATH (https://git-scm.com/download/win)." }
+    if (-not (Test-Exe "git")) { Fail "-Heavy needs git on PATH." }
     Write-Host "  git: $(& git --version)" -ForegroundColor DarkGray
     Write-Host "  -Heavy: will build GroundingDINO from source. If the build fails, install" -ForegroundColor Yellow
     Write-Host "    Visual Studio Build Tools with the 'Desktop development with C++' workload" -ForegroundColor Yellow
-    Write-Host "    (https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)." -ForegroundColor Yellow
 }
 if (-not $SkipFrontend) {
-    if (-not (Test-Exe "npm")) { Fail "npm not found on PATH. Install Node.js 20.19+ (https://nodejs.org/) or rerun with -SkipFrontend." }
+    if (-not (Test-Exe "npm")) { Fail "npm not found on PATH. Install Node.js 20.19+ or rerun with -SkipFrontend." }
     $nodeVer = (node --version).ToString().TrimStart("v")
     $parts = $nodeVer.Split(".")
     $major = [int]$parts[0]; $minor = [int]$parts[1]
@@ -126,7 +125,7 @@ if (-not $SkipFrontend) {
 }
 
 Step "Installation complete"
-$provider = if ($Heavy) { "heavy (APEX_AI_PROVIDER defaults to auto -> uses heavy when models load)" } else { "light (heuristic OpenCV pipeline)" }
+$provider = if ($Heavy) { "heavy (production default)" } else { "light (heuristic OpenCV pipeline)" }
 Write-Host "  AI provider: $provider"
 Write-Host ""
 Write-Host "  Start the server:" -ForegroundColor Green
