@@ -39,8 +39,6 @@ def estimate_floor_mask(image: np.ndarray) -> np.ndarray:
 
     mask = _carve_high_texture(mask, image)
 
-    # One larger opening trims thin colour-bridged bands above the true floor
-    # horizon (they connect to the floor but do not belong to it).
     fine = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, fine, iterations=1)
 
@@ -57,13 +55,9 @@ def _carve_high_texture(mask: np.ndarray, image: np.ndarray) -> np.ndarray:
     mean = cv2.boxFilter(gray, -1, (15, 15))
     local_std = np.sqrt(np.maximum(gray2 - mean * mean, 0.0))
 
-    # Smooth floors stay well below the rug's texture; a textured floor raises
-    # the threshold via its own median so it is never stripped.
     floor_median = float(np.median(local_std[mask > 0]))
     carve_threshold = max(14.0, floor_median * 5.0)
 
-    # Only carve interior pixels: the mask boundary has a high local std band
-    # (wall/floor edge) that must be kept so the floor isn't stripped.
     interior = cv2.erode(mask, np.ones((15, 15), np.uint8))
 
     carved = mask.copy()
@@ -90,7 +84,7 @@ def _largest_component(mask: np.ndarray) -> np.ndarray:
 
 
 class HeuristicSegmenter(SamplerSegmenterMixin, Segmenter):
-    """Produces a floor mask via adaptive LAB colour + texture heuristics."""
+    """Produces floor and lightweight foreground-object masks."""
 
     name = "heuristic"
 
@@ -101,3 +95,47 @@ class HeuristicSegmenter(SamplerSegmenterMixin, Segmenter):
         points: np.ndarray | None = None,
     ) -> np.ndarray:
         return estimate_floor_mask(image)
+
+    def segment_many(
+        self,
+        image: np.ndarray,
+        boxes: list[tuple[int, int, int, int]],
+    ) -> list[np.ndarray]:
+        """Segment detected foreground boxes using the floor complement.
+
+        The detector intentionally finds boxes from regions removed by the
+        floor estimator. Reusing that same evidence keeps the light provider
+        deterministic and avoids painting the whole bounding box as furniture.
+        """
+        floor_mask = estimate_floor_mask(image)
+        floor_background = floor_mask == 0
+        height, width = floor_mask.shape[:2]
+        results: list[np.ndarray] = []
+
+        for box in boxes:
+            x1, y1, x2, y2 = box
+            x1 = max(0, min(width, int(x1)))
+            y1 = max(0, min(height, int(y1)))
+            x2 = max(x1, min(width, int(x2)))
+            y2 = max(y1, min(height, int(y2)))
+
+            mask = np.zeros((height, width), dtype=np.uint8)
+            if x2 <= x1 or y2 <= y1:
+                results.append(mask)
+                continue
+
+            mask[y1:y2, x1:x2] = (floor_background[y1:y2, x1:x2] * 255).astype(
+                np.uint8
+            )
+
+            # Close holes in the object silhouette but do not expand beyond
+            # the detector's box; the renderer must preserve object edges.
+            mask[y1:y2, x1:x2] = cv2.morphologyEx(
+                mask[y1:y2, x1:x2],
+                cv2.MORPH_CLOSE,
+                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)),
+                iterations=1,
+            )
+            results.append(mask)
+
+        return results

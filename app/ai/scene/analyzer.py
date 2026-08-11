@@ -85,7 +85,7 @@ class SceneAnalyzer:
         try:
             detections = self.detector.detect(
                 image,
-                "sofa. couch. armchair. chair. table. rug. plant. lamp.",
+                "sofa. couch. armchair. chair. table. rug. plant. lamp. cabinet. bed. furniture.",
             )
         except Exception as exc:
             logger.warning("Obstruction detection failed (%s); skipping carve.", exc)
@@ -121,11 +121,10 @@ class SceneAnalyzer:
             obstruction = np.maximum(obstruction, mask)
         obstruction = cv2.bitwise_or(obstruction, table_boxes_mask)
 
-        # Keep the complete detected/segmented object footprint for rendering
-        # protection. The carved mask below may intentionally be eroded to
-        # avoid over-removing narrow floor regions, but that must not shrink the
-        # renderer's protected-object contract.
-        protected_mask = cv2.bitwise_and(obstruction, floor_mask)
+        # Protected-object pixels must remain protected even after the floor
+        # mask is carved. Intersecting with floor_mask here erased the very
+        # furniture pixels we needed the renderer to preserve.
+        protected_mask = obstruction.copy()
 
         carve_mask = obstruction.copy()
         kernel = np.ones((99, 1), np.uint8)
