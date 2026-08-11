@@ -121,10 +121,6 @@ class SceneAnalyzer:
             obstruction = np.maximum(obstruction, mask)
         obstruction = cv2.bitwise_or(obstruction, table_boxes_mask)
 
-        # Keep the complete detected/segmented object footprint for rendering
-        # protection. The carved mask below may intentionally be eroded to
-        # avoid over-removing narrow floor regions, but that must not shrink the
-        # renderer's protected-object contract.
         protected_mask = cv2.bitwise_and(obstruction, floor_mask)
 
         carve_mask = obstruction.copy()
@@ -322,29 +318,33 @@ class SceneAnalyzer:
 
 
 def build_scene_analyzer(provider: str | None = None) -> SceneAnalyzer:
-    """Build a SceneAnalyzer using the requested (or auto) provider stack."""
-    provider = resolve_provider(provider)
+    """Build a SceneAnalyzer using the requested provider stack.
 
-    if provider == "auto":
+    Heavy is the production path. An explicitly requested heavy provider is
+    strict: it never silently falls back to heuristics, because doing so would
+    make a production deployment appear healthy while returning non-AI output.
+    Auto mode may still fall back when heavy dependencies are unavailable.
+    """
+    requested = resolve_provider(provider)
+
+    if requested == "heavy":
+        available, missing = heavy_models_available()
+        if not available:
+            raise RuntimeError(
+                "Heavy AI provider requested but required packages are unavailable: "
+                + ", ".join(missing)
+            )
+        return _build_heavy()
+
+    if requested == "auto":
         available, missing = heavy_models_available()
         if available:
-            provider = "heavy"
             logger.info("Auto mode: heavy AI stack selected.")
-        else:
-            provider = "light"
-            logger.info("Auto mode: heavy AI stack unavailable (%s); using heuristics.", ", ".join(missing))
-
-    if provider == "heavy":
-        try:
             return _build_heavy()
-        except Exception as exc:
-            logger.warning("Heavy AI stack failed to initialise (%s); falling back to heuristics.", exc)
-            return _build_light()
-
-    if provider == "light":
+        logger.info("Auto mode: heavy AI stack unavailable (%s); using heuristics.", ", ".join(missing))
         return _build_light()
 
-    raise RuntimeError(f"Unhandled provider: {provider}")
+    return _build_light()
 
 
 def _build_heavy() -> SceneAnalyzer:
