@@ -10,7 +10,7 @@ import numpy as np
 
 from app.ai.config import heavy_models_available, resolve_provider
 from app.ai.depth.base import DepthEstimator
-from app.ai.detection.base import Detection, ObjectDetector
+from app.ai.detection.base import ObjectDetector
 from app.ai.geometry.homography import HomographyEngine
 from app.ai.geometry.plane import PlaneEstimator, PlaneResult
 from app.ai.geometry.polygon import PolygonEngine
@@ -47,30 +47,18 @@ class SceneAnalyzer:
         return cv2.resize(image, (int(width * scale), int(height * scale)), interpolation=cv2.INTER_AREA)
 
     @staticmethod
-    @staticmethod
-    def _conservative_rug_mask(
-        mask: np.ndarray,
-        box: tuple[int, int, int, int],
-    ) -> np.ndarray:
+    def _conservative_rug_mask(mask: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
         """Keep the reliable interior portion of a loose rug detection."""
         x0, y0, x1, y1 = [int(v) for v in box]
-
         height = max(1, y1 - y0)
         trim = max(1, int(height * 0.33))
-
         result = np.zeros_like(mask)
-
         start_y = max(0, min(mask.shape[0], y0 + trim))
         end_y = max(start_y, min(mask.shape[0], y1 - trim))
-
         start_x = max(0, min(mask.shape[1], x0))
         end_x = max(start_x, min(mask.shape[1], x1))
-
         if start_y < end_y and start_x < end_x:
-            result[start_y:end_y, start_x:end_x] = (
-                mask[start_y:end_y, start_x:end_x]
-            )
-
+            result[start_y:end_y, start_x:end_x] = mask[start_y:end_y, start_x:end_x]
         return result
 
     def _carve_obstructions(
@@ -108,11 +96,8 @@ class SceneAnalyzer:
             if mask.shape != floor_mask.shape:
                 logger.warning("Ignoring obstruction mask with shape %s; expected %s.", mask.shape, floor_mask.shape)
                 continue
-
             label = detection.label.lower()
-            original_mask = mask
-            protected_mask = np.maximum(protected_mask, original_mask)
-
+            protected_mask = np.maximum(protected_mask, mask)
             if "table" in label:
                 x0, y0, x1, y1 = detection.box
                 x0 = max(0, min(floor_mask.shape[1], int(x0)))
@@ -121,14 +106,12 @@ class SceneAnalyzer:
                 y1 = max(y0, min(floor_mask.shape[0], int(y1)))
                 table_boxes_mask[y0:y1, x0:x1] = 255
                 table_box_list.append((x0, y0, x1, y1))
-
             if "rug" in label:
                 rug_area = int((mask > 0).sum())
                 if floor_area > 0 and rug_area >= 0.5 * floor_area:
                     logger.info("Skipping floor-scale rug (%.0f%% of floor).", 100.0 * rug_area / floor_area)
                     continue
                 mask = self._conservative_rug_mask(mask, detection.box)
-
             obstruction = np.maximum(obstruction, mask)
 
         obstruction = cv2.bitwise_or(obstruction, table_boxes_mask)
@@ -249,7 +232,11 @@ class SceneAnalyzer:
         floor_mask, table_boxes, protected_mask = self._carve_obstructions(image, floor_mask)
         scene.floor_mask = floor_mask
         scene.protected_object_mask = protected_mask
-        scene.metadata["occlusion"] = {"provider": self.detector.name, "protected_pixels": int((protected_mask > 0).sum()), "enabled": bool((protected_mask > 0).any())}
+        scene.metadata["occlusion"] = {
+            "provider": self.detector.name,
+            "protected_pixels": int((protected_mask > 0).sum()),
+            "enabled": bool((protected_mask > 0).any()),
+        }
         logger.info("Floor mask built with %s; protected object pixels=%d", self.segmenter.name, int((protected_mask > 0).sum()))
 
         report(0.55, "Building depth map...")
@@ -291,8 +278,10 @@ def build_scene_analyzer(provider: str | None = None) -> SceneAnalyzer:
         try:
             return _build_heavy()
         except Exception as exc:
-            logger.warning("Heavy AI stack failed to initialise (%s); falling back to heuristics.")
+            logger.warning("Heavy AI stack failed to initialise (%s); falling back to heuristics.", exc)
             return _build_light()
+    if provider == "v22":
+        return _build_v22()
     if provider == "light":
         return _build_light()
     raise RuntimeError(f"Unhandled provider: {provider}")
@@ -310,3 +299,23 @@ def _build_light() -> SceneAnalyzer:
     from app.ai.detection.heuristic import HeuristicDetector
     from app.ai.segmentation.heuristic import HeuristicSegmenter
     return SceneAnalyzer(detector=HeuristicDetector(), segmenter=HeuristicSegmenter(), depth=HeuristicDepth())
+
+
+def _build_v22() -> SceneAnalyzer:
+    """Build the V2.2 geometry-safe analyzer using the existing provider stacks."""
+    from app.ai.scene.v22 import V22SceneAnalyzer
+
+    try:
+        return V22SceneAnalyzer(
+            detector=_build_heavy().detector,
+            segmenter=_build_heavy().segmenter,
+            depth=_build_heavy().depth,
+        )
+    except Exception as exc:
+        logger.warning("V2.2 heavy stack unavailable (%s); using V2.2 with heuristic providers.", exc)
+        light = _build_light()
+        return V22SceneAnalyzer(
+            detector=light.detector,
+            segmenter=light.segmenter,
+            depth=light.depth,
+        )
