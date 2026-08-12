@@ -47,17 +47,30 @@ class SceneAnalyzer:
         return cv2.resize(image, (int(width * scale), int(height * scale)), interpolation=cv2.INTER_AREA)
 
     @staticmethod
-    def _conservative_rug_mask(mask: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
-        """Keep the reliable lower/interior portion of a loose rug detection."""
+    @staticmethod
+    def _conservative_rug_mask(
+        mask: np.ndarray,
+        box: tuple[int, int, int, int],
+    ) -> np.ndarray:
+        """Keep the reliable interior portion of a loose rug detection."""
         x0, y0, x1, y1 = [int(v) for v in box]
+
         height = max(1, y1 - y0)
-        trim = max(1, int(round(height * 0.33)))
+        trim = max(1, int(height * 0.33))
+
         result = np.zeros_like(mask)
+
         start_y = max(0, min(mask.shape[0], y0 + trim))
-        end_y = max(start_y, min(mask.shape[0], y1))
+        end_y = max(start_y, min(mask.shape[0], y1 - trim))
+
         start_x = max(0, min(mask.shape[1], x0))
         end_x = max(start_x, min(mask.shape[1], x1))
-        result[start_y:end_y, start_x:end_x] = mask[start_y:end_y, start_x:end_x]
+
+        if start_y < end_y and start_x < end_x:
+            result[start_y:end_y, start_x:end_x] = (
+                mask[start_y:end_y, start_x:end_x]
+            )
+
         return result
 
     def _carve_obstructions(
