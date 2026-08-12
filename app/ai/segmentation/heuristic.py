@@ -39,9 +39,6 @@ def estimate_floor_mask(image: np.ndarray) -> np.ndarray:
     candidate = cv2.morphologyEx(candidate, cv2.MORPH_CLOSE, kernel, iterations=3)
     candidate = cv2.morphologyEx(candidate, cv2.MORPH_OPEN, kernel, iterations=2)
 
-    # Keep the floor connected to the bottom edge. This prevents isolated
-    # wall/window regions from becoming floor while retaining floor around
-    # rugs and other internal texture changes.
     count, labels, _, _ = cv2.connectedComponentsWithStats(candidate, 8)
     if count <= 1:
         mask = candidate
@@ -55,16 +52,18 @@ def estimate_floor_mask(image: np.ndarray) -> np.ndarray:
 
     mask = _carve_high_texture(mask, image)
 
-    # Recover a broad lower-floor prior if aggressive texture segmentation
-    # removed too much of an otherwise uniform floor. The recovery is limited
-    # to pixels matching the bottom-centre floor colour and therefore does not
-    # restore the high-texture rug itself.
+    # On genuinely low-variation scenes, a texture carve can leave only a
+    # narrow bottom strip even though the lower frame is clearly the same
+    # floor material. Broaden the lower-floor prior in that specific case,
+    # while still applying texture carving so the patterned rug remains out.
     if int((mask > 0).sum()) <= int(0.50 * h * w):
-        lower = dist <= max(threshold, 12.0)
-        lower[: int(h * 0.30), :] = False
-        recovery = (lower.astype(np.uint8) * 255)
-        recovery = _carve_high_texture(recovery, image)
-        mask = cv2.bitwise_or(mask, recovery)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        if float(gray.std()) < 12.0:
+            lower = dist <= max(threshold, 12.0)
+            lower[: int(h * 0.20), :] = False
+            recovery = (lower.astype(np.uint8) * 255)
+            recovery = _carve_high_texture(recovery, image)
+            mask = cv2.bitwise_or(mask, recovery)
 
     fine = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, fine, iterations=1)
