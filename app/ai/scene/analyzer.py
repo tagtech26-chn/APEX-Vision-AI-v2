@@ -77,8 +77,15 @@ class SceneAnalyzer:
         table_box_list: list[tuple[int, int, int, int]] = []
         floor_area = int((floor_mask > 0).sum())
         for detection, mask in zip(detections, masks):
+            if mask.shape != floor_mask.shape:
+                logger.warning("Ignoring obstruction mask with shape %s; expected %s.", mask.shape, floor_mask.shape)
+                continue
             if "table" in detection.label.lower():
                 x0, y0, x1, y1 = detection.box
+                x0 = max(0, min(floor_mask.shape[1], int(x0)))
+                x1 = max(x0, min(floor_mask.shape[1], int(x1)))
+                y0 = max(0, min(floor_mask.shape[0], int(y0)))
+                y1 = max(y0, min(floor_mask.shape[0], int(y1)))
                 table_boxes_mask[y0:y1, x0:x1] = 255
                 table_box_list.append((x0, y0, x1, y1))
             if "rug" in detection.label.lower() and floor_area > 0:
@@ -86,22 +93,16 @@ class SceneAnalyzer:
                 if rug_area >= 0.5 * floor_area:
                     continue
             obstruction = np.maximum(obstruction, mask)
+
+        # The segmentation mask is already the geometry we want to subtract.
+        # Previous vertical erosion discarded short furniture/rug regions and
+        # then restored them as "small components", defeating obstruction
+        # carving. Keep the detector/segmenter evidence intact and only clip it
+        # to the actual floor plane.
         obstruction = cv2.bitwise_or(obstruction, table_boxes_mask)
         protected_mask = obstruction.copy()
-
-        carve_mask = obstruction.copy()
-        kernel = np.ones((99, 1), np.uint8)
-        carve_mask = cv2.erode(carve_mask, kernel)
-        count, labels, stats, _ = cv2.connectedComponentsWithStats(obstruction)
-        for idx in range(1, count):
-            if stats[idx, cv2.CC_STAT_HEIGHT] < kernel.shape[0]:
-                carve_mask[labels == idx] = 255
-        carve_mask = cv2.bitwise_or(carve_mask, table_boxes_mask)
-        carve_mask = cv2.bitwise_and(carve_mask, floor_mask)
+        carve_mask = cv2.bitwise_and(obstruction, floor_mask)
         cleaned = cv2.subtract(floor_mask, carve_mask)
-        # Do not collapse the result to its largest connected component here.
-        # A furniture/rug obstruction can legitimately split the visible floor
-        # into multiple regions while both regions remain valid renderable floor.
         return cleaned, table_box_list, protected_mask
 
     @staticmethod
