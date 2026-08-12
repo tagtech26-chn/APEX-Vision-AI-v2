@@ -25,7 +25,7 @@ _ANALYZER_LOCK = threading.Lock()
 _TILE_CACHE_LOCK = threading.Lock()
 _TILE_CACHE: OrderedDict[str, object] = OrderedDict()
 _QUALITY_EVALUATOR = SceneQualityEvaluator()
-_SCENE_PIPELINE_VERSION = "v22-geometry-safe-2"
+_SCENE_PIPELINE_VERSION = "v22-geometry-safe-3"
 
 
 class RenderService:
@@ -199,14 +199,24 @@ class RenderService:
             try:
                 scene = self.cache.load(room_key)
                 cached_fp = scene.metadata.get("source_fingerprint")
-                if cached_fp == fingerprint:
+                cached_pipeline = scene.metadata.get("v22_geometry", {}).get("version")
+                if cached_fp == fingerprint and (
+                    pipeline_ok := (
+                        cached_pipeline in {None, "2.2-geometry-safe-3"}
+                        if room_key.find("__v22__") >= 0
+                        else True
+                    )
+                ):
                     render_metrics.cache_hit()
                     logger.info("[CACHE] Hit: %s", room_key)
                     if progress_cb is not None:
                         progress_cb(0.1, "Loading cached scene...")
                     return scene
+                if cached_fp != fingerprint:
+                    logger.info("[CACHE] Source changed for %s, re-analysing", room_path.name)
+                elif not pipeline_ok:
+                    logger.info("[CACHE] Geometry pipeline changed for %s, re-analysing", room_path.name)
                 render_metrics.cache_miss()
-                logger.info("[CACHE] Source changed for %s, re-analysing", room_path.name)
             except (OSError, TypeError, ValueError, EOFError, pickle.UnpicklingError) as exc:
                 render_metrics.cache_error()
                 render_metrics.cache_miss()
