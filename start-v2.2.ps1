@@ -1,4 +1,4 @@
-<##
+<#
 .SYNOPSIS
     Starts the APEX Vision AI v2.2 server with the geometry advisor.
 
@@ -14,7 +14,7 @@
 .PARAMETER Python
     Python executable. Defaults to D:\v22env\Scripts\python.exe when present,
     otherwise the project .venv interpreter.
-##>
+#>
 param(
     [ValidateSet("none", "gemini")][string]$GeometryAdvisor = "none",
     [ValidateRange(1, 65535)][int]$Port = 8010,
