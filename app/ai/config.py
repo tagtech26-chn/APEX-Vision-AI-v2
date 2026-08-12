@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from app.core.config import settings
 
-VALID_PROVIDERS = {"auto", "heavy", "light"}
+VALID_PROVIDERS = {"auto", "heavy", "light", "v22"}
 
 DETECTION_PROMPTS = {
     "floor": "floor, ground, tiles, marble floor, ceramic floor",
