@@ -174,8 +174,13 @@ class RenderService:
         return str(output_file)
 
     def _cache_key(self, room_path: Path) -> str:
-        provider = self.get_analyzer().providers["detector"]
-        return f"{room_path.stem}__{provider}__v6"
+        analyzer = self.get_analyzer()
+        providers = analyzer.providers
+        pipeline = "v22" if analyzer.__class__.__name__ == "V22SceneAnalyzer" else "v6"
+        return (
+            f"{room_path.stem}__{pipeline}__"
+            f"{providers['detector']}__{providers['segmenter']}__{providers['depth']}"
+        )
 
     @staticmethod
     def _source_fingerprint(room_path: Path) -> str:
