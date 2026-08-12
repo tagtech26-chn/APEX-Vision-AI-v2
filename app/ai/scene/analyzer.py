@@ -61,20 +61,13 @@ class SceneAnalyzer:
             result[start_y:end_y, start_x:end_x] = mask[start_y:end_y, start_x:end_x]
         return result
 
-    def _carve_obstructions(
-        self,
-        image: np.ndarray,
-        floor_mask: np.ndarray,
-    ) -> tuple[np.ndarray, list[tuple[int, int, int, int]], np.ndarray]:
+    def _carve_obstructions(self, image: np.ndarray, floor_mask: np.ndarray) -> tuple[np.ndarray, list[tuple[int, int, int, int]], np.ndarray]:
         """Subtract detected foreground objects and return their protected mask."""
         empty = np.zeros_like(floor_mask)
         if not hasattr(self.segmenter, "segment_many"):
             return floor_mask, [], empty
         try:
-            detections = self.detector.detect(
-                image,
-                "sofa. couch. armchair. chair. table. rug. plant. lamp. cabinet. bed. furniture.",
-            )
+            detections = self.detector.detect(image, "sofa. couch. armchair. chair. table. rug. plant. lamp. cabinet. bed. furniture.")
         except Exception as exc:
             logger.warning("Obstruction detection failed (%s); skipping carve.", exc)
             return floor_mask, [], empty
@@ -86,7 +79,6 @@ class SceneAnalyzer:
         except Exception as exc:
             logger.warning("Obstruction segmentation failed (%s); skipping carve.", exc)
             return floor_mask, [], empty
-
         obstruction = np.zeros_like(floor_mask)
         protected_mask = np.zeros_like(floor_mask)
         table_boxes_mask = np.zeros_like(floor_mask)
@@ -113,20 +105,13 @@ class SceneAnalyzer:
                     continue
                 mask = self._conservative_rug_mask(mask, detection.box)
             obstruction = np.maximum(obstruction, mask)
-
         obstruction = cv2.bitwise_or(obstruction, table_boxes_mask)
         protected_mask = cv2.bitwise_or(protected_mask, table_boxes_mask)
         carve_mask = cv2.bitwise_and(obstruction, floor_mask)
-        cleaned = cv2.subtract(floor_mask, carve_mask)
-        return cleaned, table_box_list, protected_mask
+        return cv2.subtract(floor_mask, carve_mask), table_box_list, protected_mask
 
     @staticmethod
-    def _reclaim_under_tables(
-        floor_mask: np.ndarray,
-        depth: np.ndarray,
-        plane: PlaneResult,
-        table_boxes: list[tuple[int, int, int, int]],
-    ) -> np.ndarray:
+    def _reclaim_under_tables(floor_mask: np.ndarray, depth: np.ndarray, plane: PlaneResult, table_boxes: list[tuple[int, int, int, int]]) -> np.ndarray:
         """Restore floor that full-box table carving over-removed."""
         if not table_boxes or depth is None:
             return floor_mask
@@ -221,7 +206,6 @@ class SceneAnalyzer:
         scene.width = width
         scene.height = height
         scene.metadata["providers"] = self.providers
-
         report(0.15, "Detecting floor...")
         detection = self.detector.detect_floor(image)
         logger.info("Floor detected with %s: %s", self.detector.name, detection)
@@ -232,13 +216,8 @@ class SceneAnalyzer:
         floor_mask, table_boxes, protected_mask = self._carve_obstructions(image, floor_mask)
         scene.floor_mask = floor_mask
         scene.protected_object_mask = protected_mask
-        scene.metadata["occlusion"] = {
-            "provider": self.detector.name,
-            "protected_pixels": int((protected_mask > 0).sum()),
-            "enabled": bool((protected_mask > 0).any()),
-        }
+        scene.metadata["occlusion"] = {"provider": self.detector.name, "protected_pixels": int((protected_mask > 0).sum()), "enabled": bool((protected_mask > 0).any())}
         logger.info("Floor mask built with %s; protected object pixels=%d", self.segmenter.name, int((protected_mask > 0).sum()))
-
         report(0.55, "Building depth map...")
         depth = self.depth.predict(image)
         scene.depth_map = depth
@@ -302,20 +281,13 @@ def _build_light() -> SceneAnalyzer:
 
 
 def _build_v22() -> SceneAnalyzer:
-    """Build the V2.2 geometry-safe analyzer using the existing provider stacks."""
+    """Build V2.2 around one existing provider stack, with safe fallback."""
     from app.ai.scene.v22 import V22SceneAnalyzer
 
     try:
-        return V22SceneAnalyzer(
-            detector=_build_heavy().detector,
-            segmenter=_build_heavy().segmenter,
-            depth=_build_heavy().depth,
-        )
+        heavy = _build_heavy()
+        return V22SceneAnalyzer(detector=heavy.detector, segmenter=heavy.segmenter, depth=heavy.depth)
     except Exception as exc:
-        logger.warning("V2.2 heavy stack unavailable (%s); using V2.2 with heuristic providers.", exc)
+        logger.warning("V2.2 heavy stack unavailable (%s); using heuristic providers.", exc)
         light = _build_light()
-        return V22SceneAnalyzer(
-            detector=light.detector,
-            segmenter=light.segmenter,
-            depth=light.depth,
-        )
+        return V22SceneAnalyzer(detector=light.detector, segmenter=light.segmenter, depth=light.depth)
