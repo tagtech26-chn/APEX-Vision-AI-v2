@@ -25,6 +25,7 @@ _ANALYZER_LOCK = threading.Lock()
 _TILE_CACHE_LOCK = threading.Lock()
 _TILE_CACHE: OrderedDict[str, object] = OrderedDict()
 _QUALITY_EVALUATOR = SceneQualityEvaluator()
+_SCENE_PIPELINE_VERSION = "v22-geometry-safe-2"
 
 
 class RenderService:
@@ -178,7 +179,7 @@ class RenderService:
         providers = analyzer.providers
         pipeline = "v22" if analyzer.__class__.__name__ == "V22SceneAnalyzer" else "v6"
         return (
-            f"{room_path.stem}__{pipeline}__"
+            f"{room_path.stem}__{pipeline}__{_SCENE_PIPELINE_VERSION}__"
             f"{providers['detector']}__{providers['segmenter']}__{providers['depth']}"
         )
 
