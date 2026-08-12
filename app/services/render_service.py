@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import pickle
 import threading
 import time
@@ -25,7 +26,7 @@ _ANALYZER_LOCK = threading.Lock()
 _TILE_CACHE_LOCK = threading.Lock()
 _TILE_CACHE: OrderedDict[str, object] = OrderedDict()
 _QUALITY_EVALUATOR = SceneQualityEvaluator()
-_SCENE_PIPELINE_VERSION = "v22-geometry-safe-3"
+_SCENE_PIPELINE_VERSION = "v22-geometry-safe-4"
 
 
 class RenderService:
@@ -178,8 +179,9 @@ class RenderService:
         analyzer = self.get_analyzer()
         providers = analyzer.providers
         pipeline = "v22" if analyzer.__class__.__name__ == "V22SceneAnalyzer" else "v6"
+        advisor = os.getenv("APEX_GEOMETRY_ADVISOR", "none").strip().lower() or "none"
         return (
-            f"{room_path.stem}__{pipeline}__{_SCENE_PIPELINE_VERSION}__"
+            f"{room_path.stem}__{pipeline}__{_SCENE_PIPELINE_VERSION}__{advisor}__"
             f"{providers['detector']}__{providers['segmenter']}__{providers['depth']}"
         )
 
@@ -202,7 +204,7 @@ class RenderService:
                 cached_pipeline = scene.metadata.get("v22_geometry", {}).get("version")
                 if cached_fp == fingerprint and (
                     pipeline_ok := (
-                        cached_pipeline in {None, "2.2-geometry-safe-3"}
+                        cached_pipeline in {None, "2.2-geometry-safe", "2.2-geometry-safe-4"}
                         if room_key.find("__v22__") >= 0
                         else True
                     )
