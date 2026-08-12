@@ -11,6 +11,7 @@ import numpy as np
 from app.ai.config import heavy_models_available, resolve_provider
 from app.ai.depth.base import DepthEstimator
 from app.ai.detection.base import ObjectDetector
+from app.ai.geometry.advisor import apply_advisor_protection, build_geometry_advisor
 from app.ai.geometry.homography import HomographyEngine
 from app.ai.geometry.plane import PlaneEstimator, PlaneResult
 from app.ai.geometry.polygon import PolygonEngine
@@ -238,6 +239,24 @@ class SceneAnalyzer:
         logger.info("Floor polygon extracted: %s", polygon.tolist())
         homography = self.homography_engine.compute(polygon)
         scene.homography = homography.matrix
+
+        advisor = build_geometry_advisor()
+        advice = advisor.advise(image, scene.floor_mask, scene.floor_polygon)
+        scene.metadata["geometry_advisor"] = advice
+        if advice.get("enabled") and advice.get("status") == "ok":
+            refined_mask, advisor_protected, protected_pixels = apply_advisor_protection(
+                scene.floor_mask,
+                advice,
+            )
+            if protected_pixels > 0:
+                scene.floor_mask = refined_mask
+                scene.protected_object_mask = cv2.bitwise_or(scene.protected_object_mask, advisor_protected)
+                scene.floor_polygon = self.polygon_engine.extract(refined_mask)
+                scene.homography = self.homography_engine.compute(scene.floor_polygon).matrix
+                scene.metadata["occlusion"]["protected_pixels"] = int((scene.protected_object_mask > 0).sum())
+                scene.metadata["occlusion"]["gemini_applied"] = protected_pixels
+                logger.info("[Gemini] Protected %d additional floor-overlap pixels.", protected_pixels)
+
         report(0.9, "Scene ready")
         return scene
 
