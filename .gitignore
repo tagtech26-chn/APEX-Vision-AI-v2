@@ -40,3 +40,6 @@ frontend/*.tsbuildinfo
 Thumbs.db
 .vscode/
 .idea/
+
+# Third-party AI source trees
+third_party/
