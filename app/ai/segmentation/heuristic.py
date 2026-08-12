@@ -62,7 +62,10 @@ def _carve_high_texture(mask: np.ndarray, image: np.ndarray) -> np.ndarray:
 
     carved = mask.copy()
     carved[(local_std > carve_threshold) & (interior > 0)] = 0
-    return _largest_component(carved)
+    # Texture carving can legitimately create multiple disconnected floor
+    # regions around a rug. Preserve all valid regions rather than selecting
+    # one arbitrary connected component and losing otherwise renderable floor.
+    return carved
 
 
 def _largest_component(mask: np.ndarray) -> np.ndarray:
