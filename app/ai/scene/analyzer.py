@@ -50,19 +50,18 @@ class SceneAnalyzer:
     def _conservative_rug_mask(mask: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
         """Keep the stable interior of a detected rug as the carve region.
 
-        Rug detections are often intentionally loose. Eroding the segmentation
-        evidence by roughly one third of the detected box prevents a loose
-        rug boundary from deleting legitimate floor while still removing the
-        high-confidence central portion. Furniture such as tables remains
-        box-solid because it can be reclaimed later from the depth plane.
+        Rug detections are often intentionally loose. Trim uncertain top and
+        bottom edges while preserving the detected width. This keeps the
+        central floor-covering strip removable without shrinking the carve
+        horizontally and leaving obvious rug pixels behind.
         """
         x0, y0, x1, y1 = [int(v) for v in box]
         width = max(1, x1 - x0)
         height = max(1, y1 - y0)
-        kernel_size = max(3, int(round(min(width, height) * 0.66)))
+        kernel_size = max(3, int(round(height * 0.66)))
         if kernel_size % 2 == 0:
             kernel_size -= 1
-        kernel = np.ones((kernel_size, kernel_size), np.uint8)
+        kernel = np.ones((kernel_size, 1), np.uint8)
         return cv2.erode(mask, kernel, iterations=1)
 
     def _carve_obstructions(
