@@ -46,6 +46,25 @@ class SceneAnalyzer:
         scale = limit / largest
         return cv2.resize(image, (int(width * scale), int(height * scale)), interpolation=cv2.INTER_AREA)
 
+    @staticmethod
+    def _conservative_rug_mask(mask: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
+        """Keep the stable interior of a detected rug as the carve region.
+
+        Rug detections are often intentionally loose. Eroding the segmentation
+        evidence by roughly one third of the detected box prevents a loose
+        rug boundary from deleting legitimate floor while still removing the
+        high-confidence central portion. Furniture such as tables remains
+        box-solid because it can be reclaimed later from the depth plane.
+        """
+        x0, y0, x1, y1 = [int(v) for v in box]
+        width = max(1, x1 - x0)
+        height = max(1, y1 - y0)
+        kernel_size = max(3, int(round(min(width, height) * 0.66)))
+        if kernel_size % 2 == 0:
+            kernel_size -= 1
+        kernel = np.ones((kernel_size, kernel_size), np.uint8)
+        return cv2.erode(mask, kernel, iterations=1)
+
     def _carve_obstructions(
         self,
         image: np.ndarray,
@@ -80,7 +99,8 @@ class SceneAnalyzer:
             if mask.shape != floor_mask.shape:
                 logger.warning("Ignoring obstruction mask with shape %s; expected %s.", mask.shape, floor_mask.shape)
                 continue
-            if "table" in detection.label.lower():
+            label = detection.label.lower()
+            if "table" in label:
                 x0, y0, x1, y1 = detection.box
                 x0 = max(0, min(floor_mask.shape[1], int(x0)))
                 x1 = max(x0, min(floor_mask.shape[1], int(x1)))
@@ -88,17 +108,12 @@ class SceneAnalyzer:
                 y1 = max(y0, min(floor_mask.shape[0], int(y1)))
                 table_boxes_mask[y0:y1, x0:x1] = 255
                 table_box_list.append((x0, y0, x1, y1))
-            if "rug" in detection.label.lower() and floor_area > 0:
-                rug_area = int((mask > 0).sum())
-                if rug_area >= 0.5 * floor_area:
+            if "rug" in label:
+                if floor_area > 0 and int((mask > 0).sum()) >= 0.5 * floor_area:
                     continue
+                mask = self._conservative_rug_mask(mask, detection.box)
             obstruction = np.maximum(obstruction, mask)
 
-        # The segmentation mask is already the geometry we want to subtract.
-        # Previous vertical erosion discarded short furniture/rug regions and
-        # then restored them as "small components", defeating obstruction
-        # carving. Keep the detector/segmenter evidence intact and only clip it
-        # to the actual floor plane.
         obstruction = cv2.bitwise_or(obstruction, table_boxes_mask)
         protected_mask = obstruction.copy()
         carve_mask = cv2.bitwise_and(obstruction, floor_mask)
