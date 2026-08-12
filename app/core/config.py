@@ -75,6 +75,8 @@ class Settings:
     sam2_ckpt: str = field(default_factory=lambda: _env("SAM2_CKPT"))
     depth_anything_root: str = field(default_factory=lambda: _env("DEPTH_ANYTHING_ROOT"))
     depth_anything_ckpt: str = field(default_factory=lambda: _env("DEPTH_ANYTHING_CKPT"))
+    metric3d_model: str = field(default_factory=lambda: _env("METRIC3D_MODEL"))
+    metric3d_ckpt: str = field(default_factory=lambda: _env("METRIC3D_CKPT"))
 
     render_tile_size_mm: int = field(default_factory=lambda: _env_int("APEX_TILE_MM", 600))
     render_grout_width: int = field(default_factory=lambda: _env_int("APEX_GROUT", 2))
@@ -103,8 +105,8 @@ class Settings:
             raise ValueError("APEX_PORT must be between 1 and 65535")
         if not self.app_version.strip():
             raise ValueError("APEX_VERSION must not be empty")
-        if self.ai_provider not in {"auto", "heavy", "light"}:
-            raise ValueError("APEX_AI_PROVIDER must be one of: auto, heavy, light")
+        if self.ai_provider not in {"auto", "heavy", "light", "v22"}:
+            raise ValueError("APEX_AI_PROVIDER must be one of: auto, heavy, light, v22")
         if not self.allowed_hosts:
             raise ValueError("APEX_ALLOWED_HOSTS must contain at least one host")
         if not 0.0 <= self.render_alpha <= 1.0:
