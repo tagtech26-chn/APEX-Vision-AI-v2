@@ -10,11 +10,15 @@ client = TestClient(app, base_url="http://127.0.0.1")
 def test_health_contract() -> None:
     response = client.get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {
+    body = response.json()
+    assert body == {
         "success": True,
         "status": "ok",
         "version": settings.app_version,
     }
+    # The health contract must follow the active APEX_VERSION rather than
+    # retaining the previous v2.1.0 literal during a v2.2 release.
+    assert body["version"] == settings.app_version
 
 
 def test_readiness_contract() -> None:
