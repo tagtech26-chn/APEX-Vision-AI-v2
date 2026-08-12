@@ -99,7 +99,10 @@ class SceneAnalyzer:
         carve_mask = cv2.bitwise_or(carve_mask, table_boxes_mask)
         carve_mask = cv2.bitwise_and(carve_mask, floor_mask)
         cleaned = cv2.subtract(floor_mask, carve_mask)
-        return self._largest_component(cleaned), table_box_list, protected_mask
+        # Do not collapse the result to its largest connected component here.
+        # A furniture/rug obstruction can legitimately split the visible floor
+        # into multiple regions while both regions remain valid renderable floor.
+        return cleaned, table_box_list, protected_mask
 
     @staticmethod
     def _reclaim_under_tables(
