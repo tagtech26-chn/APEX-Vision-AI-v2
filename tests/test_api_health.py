@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.core.config import settings
 from app.main import app
 
 
@@ -9,7 +10,11 @@ client = TestClient(app, base_url="http://127.0.0.1")
 def test_health_contract() -> None:
     response = client.get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {"success": True, "status": "ok", "version": "2.2.0-ai-geometry-lab"}
+    assert response.json() == {
+        "success": True,
+        "status": "ok",
+        "version": settings.app_version,
+    }
 
 
 def test_readiness_contract() -> None:
