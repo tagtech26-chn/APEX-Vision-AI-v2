@@ -9,7 +9,7 @@ client = TestClient(app, base_url="http://127.0.0.1")
 def test_health_contract() -> None:
     response = client.get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {"success": True, "status": "ok", "version": "2.1.0"}
+    assert response.json() == {"success": True, "status": "ok", "version": "2.2.0-ai-geometry-lab"}
 
 
 def test_readiness_contract() -> None:
