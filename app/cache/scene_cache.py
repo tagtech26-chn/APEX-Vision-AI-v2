@@ -16,6 +16,8 @@ from app.core.config import settings
 class SceneCache:
     """Persist analysed scenes with HMAC integrity protection when configured."""
 
+    SCHEMA_VERSION = "2.2-geometry-safe-2"
+
     def __init__(self, root: str | Path | None = None, signing_key: str | None = None) -> None:
         self.root = Path(root) if root else settings.scenes_dir
         self.root.mkdir(parents=True, exist_ok=True)
@@ -40,6 +42,7 @@ class SceneCache:
     def save(self, room_name: str, scene: SceneResult) -> None:
         if not self.enabled:
             return
+        scene.metadata["cache_schema_version"] = self.SCHEMA_VERSION
         path = self._path(room_name)
         payload = pickle.dumps(scene, protocol=pickle.HIGHEST_PROTOCOL)
         envelope = self._signature(payload) + payload
@@ -70,6 +73,8 @@ class SceneCache:
         scene = pickle.loads(payload)
         if not isinstance(scene, SceneResult):
             raise TypeError(f"Corrupt scene cache: {path}")
+        if scene.metadata.get("cache_schema_version") != self.SCHEMA_VERSION:
+            raise ValueError(f"Stale scene cache schema: {path}")
         return scene
 
     def delete(self, room_name: str) -> None:
