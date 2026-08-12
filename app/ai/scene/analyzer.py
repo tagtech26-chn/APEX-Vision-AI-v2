@@ -46,6 +46,20 @@ class SceneAnalyzer:
         scale = limit / largest
         return cv2.resize(image, (int(width * scale), int(height * scale)), interpolation=cv2.INTER_AREA)
 
+    @staticmethod
+    def _conservative_rug_mask(mask: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
+        """Keep the reliable lower/interior portion of a loose rug detection."""
+        x0, y0, x1, y1 = [int(v) for v in box]
+        height = max(1, y1 - y0)
+        trim = max(1, int(round(height * 0.33)))
+        result = np.zeros_like(mask)
+        start_y = max(0, min(mask.shape[0], y0 + trim))
+        end_y = max(start_y, min(mask.shape[0], y1))
+        start_x = max(0, min(mask.shape[1], x0))
+        end_x = max(start_x, min(mask.shape[1], x1))
+        result[start_y:end_y, start_x:end_x] = mask[start_y:end_y, start_x:end_x]
+        return result
+
     def _carve_obstructions(
         self,
         image: np.ndarray,
@@ -73,6 +87,7 @@ class SceneAnalyzer:
             return floor_mask, [], empty
 
         obstruction = np.zeros_like(floor_mask)
+        protected_mask = np.zeros_like(floor_mask)
         table_boxes_mask = np.zeros_like(floor_mask)
         table_box_list: list[tuple[int, int, int, int]] = []
         floor_area = int((floor_mask > 0).sum())
@@ -80,7 +95,11 @@ class SceneAnalyzer:
             if mask.shape != floor_mask.shape:
                 logger.warning("Ignoring obstruction mask with shape %s; expected %s.", mask.shape, floor_mask.shape)
                 continue
+
             label = detection.label.lower()
+            original_mask = mask
+            protected_mask = np.maximum(protected_mask, original_mask)
+
             if "table" in label:
                 x0, y0, x1, y1 = detection.box
                 x0 = max(0, min(floor_mask.shape[1], int(x0)))
@@ -89,13 +108,18 @@ class SceneAnalyzer:
                 y1 = max(y0, min(floor_mask.shape[0], int(y1)))
                 table_boxes_mask[y0:y1, x0:x1] = 255
                 table_box_list.append((x0, y0, x1, y1))
-            if "rug" in label and floor_area > 0 and int((mask > 0).sum()) >= 0.5 * floor_area:
-                logger.info("Skipping floor-scale rug (%.0f%% of floor).", 100.0 * int((mask > 0).sum()) / floor_area)
-                continue
+
+            if "rug" in label:
+                rug_area = int((mask > 0).sum())
+                if floor_area > 0 and rug_area >= 0.5 * floor_area:
+                    logger.info("Skipping floor-scale rug (%.0f%% of floor).", 100.0 * rug_area / floor_area)
+                    continue
+                mask = self._conservative_rug_mask(mask, detection.box)
+
             obstruction = np.maximum(obstruction, mask)
 
         obstruction = cv2.bitwise_or(obstruction, table_boxes_mask)
-        protected_mask = obstruction.copy()
+        protected_mask = cv2.bitwise_or(protected_mask, table_boxes_mask)
         carve_mask = cv2.bitwise_and(obstruction, floor_mask)
         cleaned = cv2.subtract(floor_mask, carve_mask)
         return cleaned, table_box_list, protected_mask
@@ -254,7 +278,7 @@ def build_scene_analyzer(provider: str | None = None) -> SceneAnalyzer:
         try:
             return _build_heavy()
         except Exception as exc:
-            logger.warning("Heavy AI stack failed to initialise (%s); falling back to heuristics.", exc)
+            logger.warning("Heavy AI stack failed to initialise (%s); falling back to heuristics.")
             return _build_light()
     if provider == "light":
         return _build_light()
