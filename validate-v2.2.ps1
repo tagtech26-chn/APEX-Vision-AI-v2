@@ -1,12 +1,9 @@
 $ErrorActionPreference = "Stop"
 
-$python = Join-Path $PSScriptRoot "..\v22env\Scripts\python.exe"
-if (-not (Test-Path $python)) {
-    $python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
-}
-if (-not (Test-Path $python)) {
-    $python = "python"
-}
+$python = $env:APEX_V22_PYTHON
+if (-not $python) { $python = "D:\v22env\Scripts\python.exe" }
+if (-not (Test-Path $python)) { $python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe" }
+if (-not (Test-Path $python)) { $python = "python" }
 
 Write-Host "Using v2.2 Python: $python"
 
